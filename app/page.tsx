@@ -100,10 +100,10 @@ const INITIAL_MENU: MenuData = {
 };
 
 const INITIAL_SALE_INFO: SaleInfo = {
-  title: "Family Plate Sale",
+  title: "Taylor/Stewart Annual Plate Sale",
   dateTime: "Saturday • Starting at 12:00 PM until Sold Out",
   location: "Pickup & Local Delivery Available",
-  contact: "Text or Call to Confirm Orders",
+  contact: "Text to Confirm Orders",
   paymentMethods: "Cash • Cash App • Zelle",
   note: "Full Plate ($15): 1 Meat, 2 Sides, Bread, Dessert & Drink | 1-Side or Veggie Plate ($12)",
 };
