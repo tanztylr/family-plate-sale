@@ -66,7 +66,7 @@ const DEFAULT_MENU: MenuData = {
   ],
   breads: ["Roll", "Cornbread", "No Bread"],
   desserts: ["Chef's Choice", "Cake Slice", "No Dessert"],
-  drinks: ["Chef's Choice", "Bottled Water", "Soda", "No Drink"],
+  drinks: ["Bottled Water", "Soda", "No Drink"],
 };
 
 const DEFAULT_SALE_INFO: SaleInfo = {

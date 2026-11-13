@@ -185,6 +185,10 @@ const SEED_ORDERS: Order[] = [
   },
 ];
 
+// Helper: True if order is missing meat or sides, OR explicitly flagged incomplete
+const isOrderIncomplete = (o: Order) =>
+  Boolean(o.incomplete) || !o.meat || !o.sides || o.sides.length === 0;
+
 export default function AdminPlateSaleDashboard() {
   const [user, setUser] = useState<User | null>(null);
   const [orders, setOrders] = useState<Order[]>([]);
@@ -260,7 +264,7 @@ export default function AdminPlateSaleDashboard() {
     const unsubMenu = onSnapshot(menuDocRef, async (docSnap) => {
       if (docSnap.exists()) {
         const data = docSnap.data() as MenuData;
-        const allowedDrinks = ["Soda", "No Drink"];
+        const allowedDrinks = ["Bottled Water", "Soda", "No Drink"];
         const hasChefsChoiceDessert = data.desserts?.includes("Chef's Choice");
         const needsDrinkSync =
           !data.drinks ||
@@ -356,7 +360,7 @@ export default function AdminPlateSaleDashboard() {
       qty: Math.max(1, qty),
       notes: notes.trim(),
       paid,
-      pickedUp: existing ? existing.pickedUp : false,
+      pickedUp: existing ? Boolean(existing.pickedUp) : false,
       incomplete: !selectedMeat || selectedSides.length === 0,
       createdAt: existing ? existing.createdAt : Date.now(),
     };
@@ -394,20 +398,22 @@ export default function AdminPlateSaleDashboard() {
     setSelectedDrink(
       order.drink && !order.drink.includes("Not Included")
         ? order.drink
-        : menu.drinks[0] || "No Drinks"
+        : menu.drinks[0] || "Bottled Water"
     );
     setQty(order.qty);
     setNotes(order.notes);
-    setPaid(order.paid);
+    setPaid(Boolean(order.paid));
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
   const togglePaid = async (order: Order) => {
-    await updateDoc(doc(db, "orders", order.id), { paid: !order.paid });
+    await updateDoc(doc(db, "orders", order.id), { paid: !Boolean(order.paid) });
   };
 
   const togglePickedUp = async (order: Order) => {
-    await updateDoc(doc(db, "orders", order.id), { pickedUp: !order.pickedUp });
+    await updateDoc(doc(db, "orders", order.id), {
+      pickedUp: !Boolean(order.pickedUp),
+    });
   };
 
   const handleDeleteOrder = async (id: string) => {
@@ -452,15 +458,19 @@ export default function AdminPlateSaleDashboard() {
 
     orders.forEach((o) => {
       const price = (o.tier === "full" ? 15 : 12) * o.qty;
+      const isPaid = Boolean(o.paid);
+      const isPickedUp = Boolean(o.pickedUp);
+      const isInc = isOrderIncomplete(o);
+
       totalPlates += o.qty;
       totalRevenue += price;
-      if (o.paid) collectedRevenue += price;
-      if (!o.pickedUp) pendingPickupPlates += o.qty;
+      if (isPaid) collectedRevenue += price;
+      if (!isPickedUp) pendingPickupPlates += o.qty;
 
-      if (!o.paid) unpaidCount += 1;
-      if (!o.pickedUp) pendingCount += 1;
-      if (o.incomplete) incompleteCount += 1;
-      if (o.pickedUp) completedCount += 1;
+      if (!isPaid) unpaidCount += 1;
+      if (!isPickedUp) pendingCount += 1;
+      if (isInc) incompleteCount += 1;
+      if (isPickedUp) completedCount += 1;
     });
 
     return {
@@ -489,7 +499,7 @@ export default function AdminPlateSaleDashboard() {
       if (o.meat && !o.meat.toLowerCase().includes("none")) {
         counts.Meats[o.meat] = (counts.Meats[o.meat] || 0) + o.qty;
       }
-      o.sides.forEach((s) => {
+      (o.sides || []).forEach((s) => {
         counts.Sides[s] = (counts.Sides[s] || 0) + o.qty;
       });
       if (o.bread && !o.bread.toLowerCase().includes("no bread")) {
@@ -516,17 +526,21 @@ export default function AdminPlateSaleDashboard() {
 
   // Filtered & Sorted Orders
   const displayedOrders = useMemo(() => {
+    const query = searchQuery.trim().toLowerCase();
+
     const filtered = orders.filter((o) => {
       const matchesSearch =
-        o.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        o.meat.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        o.sides.join(" ").toLowerCase().includes(searchQuery.toLowerCase());
+        !query ||
+        o.name.toLowerCase().includes(query) ||
+        (o.meat || "").toLowerCase().includes(query) ||
+        (o.sides || []).join(" ").toLowerCase().includes(query);
 
       if (!matchesSearch) return false;
-      if (filterStatus === "unpaid") return !o.paid;
-      if (filterStatus === "pending") return !o.pickedUp;
-      if (filterStatus === "incomplete") return o.incomplete;
-      if (filterStatus === "completed") return o.pickedUp;
+
+      if (filterStatus === "unpaid") return !Boolean(o.paid);
+      if (filterStatus === "pending") return !Boolean(o.pickedUp);
+      if (filterStatus === "incomplete") return isOrderIncomplete(o);
+      if (filterStatus === "completed") return Boolean(o.pickedUp);
       return true;
     });
 
@@ -544,9 +558,9 @@ export default function AdminPlateSaleDashboard() {
         return totalA - totalB;
       }
       if (sortBy === "newest") {
-        return b.createdAt - a.createdAt;
+        return (b.createdAt || 0) - (a.createdAt || 0);
       }
-      return a.createdAt - b.createdAt;
+      return (a.createdAt || 0) - (b.createdAt || 0);
     });
   }, [orders, searchQuery, filterStatus, sortBy]);
 
@@ -594,7 +608,7 @@ export default function AdminPlateSaleDashboard() {
       `"${o.name}"`,
       o.tier === "full" ? "Full Plate ($15)" : "1-Side/Veggie ($12)",
       `"${o.meat}"`,
-      `"${o.sides.join(", ")}"`,
+      `"${(o.sides || []).join(", ")}"`,
       `"${o.bread}"`,
       `"${o.dessert}"`,
       `"${o.drink}"`,
@@ -1167,11 +1181,12 @@ export default function AdminPlateSaleDashboard() {
                   {displayedOrders.map((order) => {
                     const orderTotal =
                       (order.tier === "full" ? 15 : 12) * order.qty;
+                    const isInc = isOrderIncomplete(order);
                     return (
                       <div
                         key={order.id}
                         className={`bg-white p-4 rounded-2xl border transition shadow-sm ${
-                          order.incomplete
+                          isInc
                             ? "border-amber-400 bg-amber-50/30"
                             : order.pickedUp
                             ? "border-blue-200 bg-blue-50/20"
@@ -1190,7 +1205,7 @@ export default function AdminPlateSaleDashboard() {
                                   ? "Full ($15)"
                                   : "1-Side/Veggie ($12)"}
                               </span>
-                              {order.incomplete && (
+                              {isInc && (
                                 <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-semibold bg-amber-200 text-amber-950">
                                   <AlertCircle className="w-3 h-3" /> Needs
                                   Selections
@@ -1204,7 +1219,7 @@ export default function AdminPlateSaleDashboard() {
                             </div>
 
                             {/* COLOR-CODED ITEM TAGS ON ORDER CARD */}
-                            {order.incomplete ? (
+                            {isInc ? (
                               <p className="text-sm italic text-stone-500 mt-1.5">
                                 Click Edit to fill in meat & sides
                               </p>
@@ -1215,7 +1230,7 @@ export default function AdminPlateSaleDashboard() {
                                     {order.meat}
                                   </span>
                                 )}
-                                {order.sides.map((side) => (
+                                {(order.sides || []).map((side) => (
                                   <span
                                     key={side}
                                     className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-900"
