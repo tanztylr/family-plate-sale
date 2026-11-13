@@ -70,7 +70,7 @@ const DEFAULT_MENU: MenuData = {
 };
 
 const DEFAULT_SALE_INFO: SaleInfo = {
-  title: "LOV, Plate Sale",
+  title: "LOV Plate Sale",
   dateTime: "Saturday • Starting at 12:00 PM until Sold Out",
   location: "Pickup & Local Delivery Available",
   contact: "Text or Call to Confirm Orders",
@@ -126,7 +126,14 @@ export default function PlateSaleHomepage() {
 
     const unsubInfo = onSnapshot(doc(db, "settings", "saleInfo"), (snap) => {
       if (snap.exists()) {
-        setSaleInfo(snap.data() as SaleInfo);
+        const info = snap.data() as SaleInfo;
+        setSaleInfo({
+          ...info,
+          title:
+            info.title === "LOV, Plate Sale" || info.title === "Family Plate Sale"
+              ? "LOV Plate Sale"
+              : info.title,
+        });
       }
     });
 
@@ -233,8 +240,8 @@ export default function PlateSaleHomepage() {
       <header className="bg-gradient-to-br from-amber-900 via-amber-800 to-stone-900 text-amber-50">
         <div className="max-w-5xl mx-auto px-4 py-14 sm:py-16 text-center space-y-5">
           <div className="inline-flex items-center gap-1.5 px-3.5 py-1 rounded-full text-xs font-semibold bg-amber-950/60 text-amber-200 border border-amber-500/30">
-            <Sparkles className="w-3.5 h-3.5 text-amber-300" /> Homemade Soul
-            Food • Pre-Orders Open
+            <Sparkles className="w-3.5 h-3.5 text-amber-300" /> Ladies of the
+            Vineyard • Pre-Orders Open
           </div>
 
           <h1 className="text-3xl sm:text-5xl font-extrabold tracking-tight text-white">
@@ -291,7 +298,7 @@ export default function PlateSaleHomepage() {
                 <span className="font-semibold text-red-700">1 Meat</span>,{" "}
                 <span className="font-semibold text-emerald-700">2 Sides</span>,{" "}
                 <span className="font-semibold text-orange-700">Bread</span>,{" "}
-                <span className="font-semibold text-stone-800">Dessert</span>,
+                <span className="font-semibold text-purple-700">Dessert</span>,
                 and a{" "}
                 <span className="font-semibold text-blue-700">Drink</span>.
               </p>
@@ -525,7 +532,7 @@ export default function PlateSaleHomepage() {
                       type="button"
                       key={meat}
                       onClick={() => setSelectedMeat(meat)}
-                      className={`px-3.5 py-2 rounded-xl text-xs font-semibold border transition cursor-pointer ${
+                      className={`px-3.5 py-2 rounded-full text-xs font-semibold border transition cursor-pointer ${
                         selectedMeat === meat
                           ? "bg-red-700 text-white border-red-700"
                           : "bg-red-50/70 text-red-900 border-red-200 hover:bg-red-100"
@@ -550,7 +557,7 @@ export default function PlateSaleHomepage() {
                         type="button"
                         key={side}
                         onClick={() => handleToggleSide(side)}
-                        className={`px-3.5 py-2 rounded-xl text-xs font-semibold border transition cursor-pointer ${
+                        className={`px-3.5 py-2 rounded-full text-xs font-semibold border transition cursor-pointer ${
                           active
                             ? "bg-emerald-700 text-white border-emerald-700"
                             : "bg-emerald-50/70 text-emerald-900 border-emerald-200 hover:bg-emerald-100"
@@ -574,7 +581,7 @@ export default function PlateSaleHomepage() {
                       type="button"
                       key={b}
                       onClick={() => setSelectedBread(b)}
-                      className={`px-3.5 py-2 rounded-xl text-xs font-semibold border transition cursor-pointer ${
+                      className={`px-3.5 py-2 rounded-full text-xs font-semibold border transition cursor-pointer ${
                         selectedBread === b
                           ? "bg-orange-600 text-white border-orange-600"
                           : "bg-orange-50/70 text-orange-900 border-orange-200 hover:bg-orange-100"
@@ -586,7 +593,7 @@ export default function PlateSaleHomepage() {
                 </div>
               </div>
 
-              {/* COLOR-CODED DRINK (BLUE) & DESSERT */}
+              {/* COLOR-CODED DRINK (BLUE) & DESSERT (PURPLE) */}
               {tier === "full" && (
                 <div className="space-y-4">
                   <div>
@@ -599,7 +606,7 @@ export default function PlateSaleHomepage() {
                           type="button"
                           key={dr}
                           onClick={() => setSelectedDrink(dr)}
-                          className={`px-3.5 py-2 rounded-xl text-xs font-semibold border transition cursor-pointer ${
+                          className={`px-3.5 py-2 rounded-full text-xs font-semibold border transition cursor-pointer ${
                             selectedDrink === dr
                               ? "bg-blue-700 text-white border-blue-700"
                               : "bg-blue-50/70 text-blue-900 border-blue-200 hover:bg-blue-100"
@@ -612,20 +619,25 @@ export default function PlateSaleHomepage() {
                   </div>
 
                   <div>
-                    <label className="block text-xs font-bold uppercase text-stone-600 mb-1">
-                      6. Dessert
+                    <label className="block text-xs font-bold uppercase text-purple-700 mb-1.5">
+                      6. Dessert Choice
                     </label>
-                    <select
-                      value={selectedDessert}
-                      onChange={(e) => setSelectedDessert(e.target.value)}
-                      className="w-full px-3 py-2.5 rounded-xl border border-stone-300 text-xs bg-white"
-                    >
+                    <div className="flex flex-wrap gap-2">
                       {menu.desserts.map((d) => (
-                        <option key={d} value={d}>
+                        <button
+                          type="button"
+                          key={d}
+                          onClick={() => setSelectedDessert(d)}
+                          className={`px-3.5 py-2 rounded-full text-xs font-semibold border transition cursor-pointer ${
+                            selectedDessert === d
+                              ? "bg-purple-700 text-white border-purple-700"
+                              : "bg-purple-50/70 text-purple-900 border-purple-200 hover:bg-purple-100"
+                          }`}
+                        >
                           {d}
-                        </option>
+                        </button>
                       ))}
-                    </select>
+                    </div>
                   </div>
                 </div>
               )}

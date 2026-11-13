@@ -110,7 +110,7 @@ const INITIAL_MENU: MenuData = {
 };
 
 const INITIAL_SALE_INFO: SaleInfo = {
-  title: "LOV, Plate Sale",
+  title: "LOV Plate Sale",
   dateTime: "Saturday • Starting at 12:00 PM until Sold Out",
   location: "Pickup & Local Delivery Available",
   contact: "Text or Call to Confirm Orders",
@@ -260,7 +260,6 @@ export default function AdminPlateSaleDashboard() {
     const unsubMenu = onSnapshot(menuDocRef, async (docSnap) => {
       if (docSnap.exists()) {
         const data = docSnap.data() as MenuData;
-        // Enforce strict drink lineup (Bottled Water, Soda, No Drink)
         const allowedDrinks = ["Bottled Water", "Soda", "No Drink"];
         const needsDrinkSync =
           !data.drinks ||
@@ -283,9 +282,8 @@ export default function AdminPlateSaleDashboard() {
     const unsubInfo = onSnapshot(infoDocRef, async (docSnap) => {
       if (docSnap.exists()) {
         const info = docSnap.data() as SaleInfo;
-        if (info.title !== "LOV, Plate Sale" && !localStorage.getItem("lov_title_synced")) {
-          localStorage.setItem("lov_title_synced", "true");
-          const updatedInfo = { ...info, title: "LOV, Plate Sale" };
+        if (info.title === "LOV, Plate Sale" || info.title === "Family Plate Sale") {
+          const updatedInfo = { ...info, title: "LOV Plate Sale" };
           await setDoc(infoDocRef, updatedInfo);
           setSaleInfo(updatedInfo);
         } else {
@@ -454,7 +452,7 @@ export default function AdminPlateSaleDashboard() {
       if (!o.paid) unpaidCount += 1;
       if (!o.pickedUp) pendingCount += 1;
       if (o.incomplete) incompleteCount += 1;
-      if (o.paid && o.pickedUp) completedCount += 1;
+      if (o.pickedUp) completedCount += 1;
     });
 
     return {
@@ -520,7 +518,7 @@ export default function AdminPlateSaleDashboard() {
       if (filterStatus === "unpaid") return !o.paid;
       if (filterStatus === "pending") return !o.pickedUp;
       if (filterStatus === "incomplete") return o.incomplete;
-      if (filterStatus === "completed") return o.paid && o.pickedUp;
+      if (filterStatus === "completed") return o.pickedUp;
       return true;
     });
 
@@ -850,7 +848,7 @@ export default function AdminPlateSaleDashboard() {
                       type="button"
                       key={meat}
                       onClick={() => setSelectedMeat(meat)}
-                      className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition cursor-pointer ${
+                      className={`px-3.5 py-1.5 rounded-full text-xs font-semibold border transition cursor-pointer ${
                         selectedMeat === meat
                           ? "bg-red-700 text-white border-red-700 shadow-xs"
                           : "bg-red-50/70 text-red-900 border-red-200 hover:bg-red-100"
@@ -881,7 +879,7 @@ export default function AdminPlateSaleDashboard() {
                         type="button"
                         key={side}
                         onClick={() => handleToggleSide(side)}
-                        className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition cursor-pointer ${
+                        className={`px-3.5 py-1.5 rounded-full text-xs font-semibold border transition cursor-pointer ${
                           active
                             ? "bg-emerald-700 text-white border-emerald-700 shadow-xs"
                             : "bg-emerald-50/70 text-emerald-900 border-emerald-200 hover:bg-emerald-100"
@@ -894,7 +892,7 @@ export default function AdminPlateSaleDashboard() {
                 </div>
               </div>
 
-              {/* COLOR-CODED BREAD (ORANGE), DESSERT, & DRINK (BLUE) */}
+              {/* COLOR-CODED BREAD (ORANGE), DRINK (BLUE), & DESSERT (PURPLE) */}
               <div className="space-y-3">
                 <div>
                   <label className="block text-xs font-bold uppercase text-orange-700 mb-1">
@@ -906,7 +904,7 @@ export default function AdminPlateSaleDashboard() {
                         type="button"
                         key={b}
                         onClick={() => setSelectedBread(b)}
-                        className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition cursor-pointer ${
+                        className={`px-3.5 py-1.5 rounded-full text-xs font-semibold border transition cursor-pointer ${
                           selectedBread === b
                             ? "bg-orange-600 text-white border-orange-600 shadow-xs"
                             : "bg-orange-50/70 text-orange-900 border-orange-200 hover:bg-orange-100"
@@ -930,7 +928,7 @@ export default function AdminPlateSaleDashboard() {
                             type="button"
                             key={dr}
                             onClick={() => setSelectedDrink(dr)}
-                            className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition cursor-pointer ${
+                            className={`px-3.5 py-1.5 rounded-full text-xs font-semibold border transition cursor-pointer ${
                               selectedDrink === dr
                                 ? "bg-blue-700 text-white border-blue-700 shadow-xs"
                                 : "bg-blue-50/70 text-blue-900 border-blue-200 hover:bg-blue-100"
@@ -943,20 +941,25 @@ export default function AdminPlateSaleDashboard() {
                     </div>
 
                     <div>
-                      <label className="block text-xs font-semibold uppercase text-stone-600 mb-1">
+                      <label className="block text-xs font-bold uppercase text-purple-700 mb-1">
                         Dessert
                       </label>
-                      <select
-                        value={selectedDessert}
-                        onChange={(e) => setSelectedDessert(e.target.value)}
-                        className="w-full px-2.5 py-2 rounded-lg border border-stone-300 text-xs bg-white"
-                      >
+                      <div className="flex flex-wrap gap-1.5">
                         {menu.desserts.map((d) => (
-                          <option key={d} value={d}>
+                          <button
+                            type="button"
+                            key={d}
+                            onClick={() => setSelectedDessert(d)}
+                            className={`px-3.5 py-1.5 rounded-full text-xs font-semibold border transition cursor-pointer ${
+                              selectedDessert === d
+                                ? "bg-purple-700 text-white border-purple-700 shadow-xs"
+                                : "bg-purple-50/70 text-purple-900 border-purple-200 hover:bg-purple-100"
+                            }`}
+                          >
                             {d}
-                          </option>
+                          </button>
                         ))}
-                      </select>
+                      </div>
                     </div>
                   </>
                 )}
@@ -1162,8 +1165,8 @@ export default function AdminPlateSaleDashboard() {
                         className={`bg-white p-4 rounded-2xl border transition shadow-sm ${
                           order.incomplete
                             ? "border-amber-400 bg-amber-50/30"
-                            : order.paid && order.pickedUp
-                            ? "border-emerald-200 bg-emerald-50/20"
+                            : order.pickedUp
+                            ? "border-blue-200 bg-blue-50/20"
                             : "border-stone-200"
                         }`}
                       >
@@ -1185,6 +1188,11 @@ export default function AdminPlateSaleDashboard() {
                                   Selections
                                 </span>
                               )}
+                              {order.pickedUp && !order.paid && (
+                                <span className="px-2 py-0.5 rounded-md text-xs font-bold bg-rose-100 text-rose-800">
+                                  Picked Up • Still Unpaid
+                                </span>
+                              )}
                             </div>
 
                             {/* COLOR-CODED ITEM TAGS ON ORDER CARD */}
@@ -1195,37 +1203,38 @@ export default function AdminPlateSaleDashboard() {
                             ) : (
                               <div className="flex flex-wrap items-center gap-1.5 mt-2">
                                 {order.meat && (
-                                  <span className="px-2 py-0.5 rounded-md text-xs font-semibold bg-red-100 text-red-900">
+                                  <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-red-100 text-red-900">
                                     {order.meat}
                                   </span>
                                 )}
                                 {order.sides.map((side) => (
                                   <span
                                     key={side}
-                                    className="px-2 py-0.5 rounded-md text-xs font-semibold bg-emerald-100 text-emerald-900"
+                                    className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-900"
                                   >
                                     {side}
                                   </span>
                                 ))}
                                 {order.bread && (
-                                  <span className="px-2 py-0.5 rounded-md text-xs font-semibold bg-orange-100 text-orange-900">
+                                  <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-orange-100 text-orange-900">
                                     {order.bread}
                                   </span>
                                 )}
                                 {order.tier === "full" &&
                                   order.drink &&
                                   !order.drink.includes("Not Included") && (
-                                    <span className="px-2 py-0.5 rounded-md text-xs font-semibold bg-blue-100 text-blue-900">
+                                    <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-blue-100 text-blue-900">
                                       {order.drink}
                                     </span>
                                   )}
+                                {order.tier === "full" &&
+                                  order.dessert &&
+                                  !order.dessert.includes("Not Included") && (
+                                    <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-purple-100 text-purple-900">
+                                      {order.dessert}
+                                    </span>
+                                  )}
                               </div>
-                            )}
-
-                            {order.tier === "full" && !order.incomplete && (
-                              <p className="text-xs text-stone-500 mt-1">
-                                Dessert: {order.dessert}
-                              </p>
                             )}
 
                             {order.notes && (
@@ -1242,7 +1251,7 @@ export default function AdminPlateSaleDashboard() {
                           </div>
                         </div>
 
-                        {/* QUICK ACTION PILL CIRCLES (CHANGE COLOR & MOVE ORDER) */}
+                        {/* QUICK ACTION PILL CIRCLES */}
                         <div className="mt-3 pt-3 border-t border-stone-100 flex flex-wrap items-center justify-between gap-2">
                           <div className="flex items-center gap-2">
                             <button
