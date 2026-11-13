@@ -65,8 +65,8 @@ const DEFAULT_MENU: MenuData = {
     "Collards",
   ],
   breads: ["Roll", "Cornbread", "No Bread"],
-  desserts: ["Cake Slice", "No Dessert"],
-  drinks: ["Bottled Water", "Soda", "No Drink"],
+  desserts: ["Chef's Choice", "Cake Slice", "No Dessert"],
+  drinks: ["Chef's Choice", "Bottled Water", "Soda", "No Drink"],
 };
 
 const DEFAULT_SALE_INFO: SaleInfo = {
@@ -93,8 +93,8 @@ export default function PlateSaleHomepage() {
     "Baked Mac n Cheese",
   ]);
   const [selectedBread, setSelectedBread] = useState("Roll");
-  const [selectedDessert, setSelectedDessert] = useState("Cake Slice");
-  const [selectedDrink, setSelectedDrink] = useState("Bottled Water");
+  const [selectedDessert, setSelectedDessert] = useState("Chef's Choice");
+  const [selectedDrink, setSelectedDrink] = useState("Chef's Choice");
   const [qty, setQty] = useState(1);
   const [notes, setNotes] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -117,9 +117,13 @@ export default function PlateSaleHomepage() {
     const unsubMenu = onSnapshot(doc(db, "settings", "menu"), (snap) => {
       if (snap.exists()) {
         const data = snap.data() as MenuData;
+        const hasChefsChoiceDessert = data.desserts?.includes("Chef's Choice");
         setMenu({
           ...data,
-          drinks: ["Bottled Water", "Soda", "No Drink"],
+          drinks: ["Chef's Choice", "Bottled Water", "Soda", "No Drink"],
+          desserts: hasChefsChoiceDessert
+            ? data.desserts
+            : ["Chef's Choice", ...(data.desserts || ["Cake Slice", "No Dessert"])],
         });
       }
     });

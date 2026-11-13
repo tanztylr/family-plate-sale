@@ -105,8 +105,8 @@ const INITIAL_MENU: MenuData = {
     "Collards",
   ],
   breads: ["Roll", "Cornbread", "No Bread"],
-  desserts: ["Cake Slice", "No Dessert"],
-  drinks: ["Bottled Water", "Soda", "No Drink"],
+  desserts: ["Chef's Choice", "Cake Slice", "No Dessert"],
+  drinks: ["Chef's Choice", "Bottled Water", "Soda", "No Drink"],
 };
 
 const INITIAL_SALE_INFO: SaleInfo = {
@@ -126,8 +126,8 @@ const SEED_ORDERS: Order[] = [
     meat: "Ham",
     sides: ["Dressing", "Green Beans"],
     bread: "Roll",
-    dessert: "Cake Slice",
-    drink: "Bottled Water",
+    dessert: "Chef's Choice",
+    drink: "Chef's Choice",
     qty: 1,
     notes: "",
     paid: false,
@@ -142,8 +142,8 @@ const SEED_ORDERS: Order[] = [
     meat: "Baked Turkey Wings",
     sides: ["Dressing", "Green Beans"],
     bread: "Roll",
-    dessert: "Cake Slice",
-    drink: "Soda",
+    dessert: "Chef's Choice",
+    drink: "Chef's Choice",
     qty: 1,
     notes: "",
     paid: false,
@@ -158,8 +158,8 @@ const SEED_ORDERS: Order[] = [
     meat: "Ham",
     sides: ["Dressing", "Baked Mac n Cheese"],
     bread: "Roll",
-    dessert: "Cake Slice",
-    drink: "Bottled Water",
+    dessert: "Chef's Choice",
+    drink: "Chef's Choice",
     qty: 1,
     notes: "",
     paid: false,
@@ -174,8 +174,8 @@ const SEED_ORDERS: Order[] = [
     meat: "",
     sides: [],
     bread: "Roll",
-    dessert: "Cake Slice",
-    drink: "Bottled Water",
+    dessert: "Chef's Choice",
+    drink: "Chef's Choice",
     qty: 1,
     notes: "Waiting on meat & side choices",
     paid: false,
@@ -214,8 +214,8 @@ export default function AdminPlateSaleDashboard() {
     "Green Beans",
   ]);
   const [selectedBread, setSelectedBread] = useState("Roll");
-  const [selectedDessert, setSelectedDessert] = useState("Cake Slice");
-  const [selectedDrink, setSelectedDrink] = useState("Bottled Water");
+  const [selectedDessert, setSelectedDessert] = useState("Chef's Choice");
+  const [selectedDrink, setSelectedDrink] = useState("Chef's Choice");
   const [qty, setQty] = useState(1);
   const [notes, setNotes] = useState("");
   const [paid, setPaid] = useState(false);
@@ -260,14 +260,22 @@ export default function AdminPlateSaleDashboard() {
     const unsubMenu = onSnapshot(menuDocRef, async (docSnap) => {
       if (docSnap.exists()) {
         const data = docSnap.data() as MenuData;
-        const allowedDrinks = ["Bottled Water", "Soda", "No Drink"];
+        const allowedDrinks = ["Chef's Choice", "Bottled Water", "Soda", "No Drink"];
+        const hasChefsChoiceDessert = data.desserts?.includes("Chef's Choice");
         const needsDrinkSync =
           !data.drinks ||
           data.drinks.length !== allowedDrinks.length ||
           !allowedDrinks.every((d) => data.drinks.includes(d));
 
-        if (needsDrinkSync) {
-          const syncedMenu = { ...data, drinks: allowedDrinks };
+        if (needsDrinkSync || !hasChefsChoiceDessert) {
+          const updatedDesserts = hasChefsChoiceDessert
+            ? data.desserts
+            : ["Chef's Choice", ...(data.desserts || ["Cake Slice", "No Dessert"])];
+          const syncedMenu: MenuData = {
+            ...data,
+            drinks: allowedDrinks,
+            desserts: updatedDesserts,
+          };
           await setDoc(menuDocRef, syncedMenu);
           setMenu(syncedMenu);
         } else {
@@ -364,8 +372,8 @@ export default function AdminPlateSaleDashboard() {
     setSelectedMeat(menu.meats[0] || "Ham");
     setSelectedSides(menu.sides.slice(0, 2));
     setSelectedBread(menu.breads[0] || "Roll");
-    setSelectedDessert(menu.desserts[0] || "Cake Slice");
-    setSelectedDrink(menu.drinks[0] || "Bottled Water");
+    setSelectedDessert(menu.desserts[0] || "Chef's Choice");
+    setSelectedDrink(menu.drinks[0] || "Chef's Choice");
     setQty(1);
     setNotes("");
     setPaid(false);
@@ -381,12 +389,12 @@ export default function AdminPlateSaleDashboard() {
     setSelectedDessert(
       order.dessert && !order.dessert.includes("Not Included")
         ? order.dessert
-        : menu.desserts[0] || "Cake Slice"
+        : menu.desserts[0] || "Chef's Choice"
     );
     setSelectedDrink(
       order.drink && !order.drink.includes("Not Included")
         ? order.drink
-        : menu.drinks[0] || "Bottled Water"
+        : menu.drinks[0] || "Chef's Choice"
     );
     setQty(order.qty);
     setNotes(order.notes);
