@@ -106,7 +106,7 @@ const INITIAL_MENU: MenuData = {
   ],
   breads: ["Roll", "Cornbread", "No Bread"],
   desserts: ["Chef's Choice", "Cake Slice", "No Dessert"],
-  drinks: ["Chef's Choice", "Bottled Water", "Soda", "No Drink"],
+  drinks: ["Bottled Water", "Soda", "No Drink"],
 };
 
 const INITIAL_SALE_INFO: SaleInfo = {
@@ -127,7 +127,7 @@ const SEED_ORDERS: Order[] = [
     sides: ["Dressing", "Green Beans"],
     bread: "Roll",
     dessert: "Chef's Choice",
-    drink: "Chef's Choice",
+    drink: "Bottled Water",
     qty: 1,
     notes: "",
     paid: false,
@@ -143,7 +143,7 @@ const SEED_ORDERS: Order[] = [
     sides: ["Dressing", "Green Beans"],
     bread: "Roll",
     dessert: "Chef's Choice",
-    drink: "Chef's Choice",
+    drink: "Bottled Water",
     qty: 1,
     notes: "",
     paid: false,
@@ -159,7 +159,7 @@ const SEED_ORDERS: Order[] = [
     sides: ["Dressing", "Baked Mac n Cheese"],
     bread: "Roll",
     dessert: "Chef's Choice",
-    drink: "Chef's Choice",
+    drink: "Bottled Water",
     qty: 1,
     notes: "",
     paid: false,
@@ -175,7 +175,7 @@ const SEED_ORDERS: Order[] = [
     sides: [],
     bread: "Roll",
     dessert: "Chef's Choice",
-    drink: "Chef's Choice",
+    drink: "Bottled Water",
     qty: 1,
     notes: "Waiting on meat & side choices",
     paid: false,
@@ -215,7 +215,7 @@ export default function AdminPlateSaleDashboard() {
   ]);
   const [selectedBread, setSelectedBread] = useState("Roll");
   const [selectedDessert, setSelectedDessert] = useState("Chef's Choice");
-  const [selectedDrink, setSelectedDrink] = useState("Chef's Choice");
+  const [selectedDrink, setSelectedDrink] = useState("Bottled Water");
   const [qty, setQty] = useState(1);
   const [notes, setNotes] = useState("");
   const [paid, setPaid] = useState(false);
@@ -260,7 +260,7 @@ export default function AdminPlateSaleDashboard() {
     const unsubMenu = onSnapshot(menuDocRef, async (docSnap) => {
       if (docSnap.exists()) {
         const data = docSnap.data() as MenuData;
-        const allowedDrinks = ["Chef's Choice", "Bottled Water", "Soda", "No Drink"];
+        const allowedDrinks = ["Soda", "No Drink"];
         const hasChefsChoiceDessert = data.desserts?.includes("Chef's Choice");
         const needsDrinkSync =
           !data.drinks ||
@@ -373,7 +373,7 @@ export default function AdminPlateSaleDashboard() {
     setSelectedSides(menu.sides.slice(0, 2));
     setSelectedBread(menu.breads[0] || "Roll");
     setSelectedDessert(menu.desserts[0] || "Chef's Choice");
-    setSelectedDrink(menu.drinks[0] || "Chef's Choice");
+    setSelectedDrink(menu.drinks[0] || "Bottled Water");
     setQty(1);
     setNotes("");
     setPaid(false);
@@ -394,7 +394,7 @@ export default function AdminPlateSaleDashboard() {
     setSelectedDrink(
       order.drink && !order.drink.includes("Not Included")
         ? order.drink
-        : menu.drinks[0] || "Chef's Choice"
+        : menu.drinks[0] || "No Drinks"
     );
     setQty(order.qty);
     setNotes(order.notes);
