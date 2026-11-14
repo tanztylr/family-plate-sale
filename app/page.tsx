@@ -38,6 +38,16 @@ const auth = getAuth(app);
 const db = getFirestore(app);
 
 // --- TYPES ---
+interface PlateTierOption {
+  id: string;
+  name: string;
+  price: number;
+  description: string;
+  maxSides: number;
+  veggieMaxSides?: number;
+  includesExtras: boolean;
+}
+
 interface MenuData {
   meats: string[];
   sides: string[];
@@ -45,6 +55,7 @@ interface MenuData {
   desserts: string[];
   drinks: string[];
   soldOut?: string[];
+  plateOptions?: PlateTierOption[];
 }
 
 interface SaleInfo {
@@ -55,6 +66,26 @@ interface SaleInfo {
   paymentMethods: string;
   note: string;
 }
+
+const DEFAULT_PLATE_OPTIONS: PlateTierOption[] = [
+  {
+    id: "full",
+    name: "Full Dinner Plate",
+    price: 15,
+    description: "1 Meat, 2 Sides, Bread, Dessert & Drink",
+    maxSides: 2,
+    includesExtras: true,
+  },
+  {
+    id: "small",
+    name: "1-Side or Veggie Plate",
+    price: 12,
+    description: "1 Meat + 1 Side + Bread, OR 3-Side Veggie Plate + Bread",
+    maxSides: 1,
+    veggieMaxSides: 3,
+    includesExtras: false,
+  },
+];
 
 const DEFAULT_MENU: MenuData = {
   meats: ["Ham", "Baked Turkey Wings", "Baked Chicken", "None (Veggie Plate)"],
@@ -70,6 +101,7 @@ const DEFAULT_MENU: MenuData = {
   desserts: ["Chef's Choice", "Cake Slice", "No Dessert"],
   drinks: ["Bottled Water", "Soda", "No Drink"],
   soldOut: [],
+  plateOptions: DEFAULT_PLATE_OPTIONS,
 };
 
 const DEFAULT_SALE_INFO: SaleInfo = {
@@ -78,7 +110,7 @@ const DEFAULT_SALE_INFO: SaleInfo = {
   location: "Pickup Only",
   contact: "Text or Call to Confirm Orders",
   paymentMethods: "Cash • Cash App • Zelle",
-  note: "Full Plate ($15): 1 Meat, 2 Sides, Bread, Dessert & Drink | 1-Side or Veggie Plate ($12)",
+  note: "",
 };
 
 export default function TeamPlateSaleHome() {
@@ -97,7 +129,14 @@ export default function TeamPlateSaleHome() {
 
     const unsubMenu = onSnapshot(doc(db, "settings", "menu"), (snap) => {
       if (snap.exists()) {
-        setMenu(snap.data() as MenuData);
+        const data = snap.data() as MenuData;
+        setMenu({
+          ...data,
+          plateOptions:
+            data.plateOptions && data.plateOptions.length > 0
+              ? data.plateOptions
+              : DEFAULT_PLATE_OPTIONS,
+        });
       }
     });
 
@@ -131,6 +170,7 @@ export default function TeamPlateSaleHome() {
   }, [user]);
 
   const soldOutList = menu.soldOut || [];
+  const plateOptions = menu.plateOptions || DEFAULT_PLATE_OPTIONS;
 
   return (
     <div className="min-h-screen bg-stone-50 text-stone-900 pb-16">
@@ -154,7 +194,6 @@ export default function TeamPlateSaleHome() {
       {/* BURGUNDY WINE HERO WITH FRAMED GRAPHIC */}
       <header className="bg-gradient-to-br from-rose-950 via-red-950 to-stone-950 text-rose-50">
         <div className="max-w-5xl mx-auto px-4 py-10 sm:py-12 flex flex-col sm:flex-row items-center justify-center gap-6 sm:gap-8 text-center sm:text-left">
-          {/* Wine Graphic Card */}
           <div className="shrink-0 w-28 h-28 sm:w-32 sm:h-32 rounded-2xl overflow-hidden bg-stone-200 border-2 border-amber-300/40 shadow-lg">
             <img
               src="/lov-wine.jpeg"
@@ -163,7 +202,6 @@ export default function TeamPlateSaleHome() {
             />
           </div>
 
-          {/* Title, Badges & Action Button */}
           <div className="space-y-4">
             <h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight text-white">
               {saleInfo.title}
@@ -192,43 +230,30 @@ export default function TeamPlateSaleHome() {
       </header>
 
       <main className="max-w-5xl mx-auto px-4 mt-8 space-y-6">
-        {/* PLATE PRICING REFERENCE */}
+        {/* LIVE PLATE PRICING CARDS */}
         <section className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div className="bg-white p-5 rounded-2xl border-2 border-rose-900/20 shadow-sm">
-            <div className="flex items-center justify-between">
-              <h2 className="text-lg font-bold text-stone-900">
-                Full Dinner Plate
-              </h2>
-              <span className="text-2xl font-extrabold text-rose-950">$15</span>
+          {plateOptions.map((option, idx) => (
+            <div
+              key={option.id}
+              className={`bg-white p-5 rounded-2xl shadow-sm ${
+                idx === 0
+                  ? "border-2 border-rose-900/25"
+                  : "border border-stone-200"
+              }`}
+            >
+              <div className="flex items-center justify-between">
+                <h2 className="text-lg font-bold text-stone-900">
+                  {option.name}
+                </h2>
+                <span className="text-2xl font-extrabold text-rose-950">
+                  ${option.price}
+                </span>
+              </div>
+              <p className="mt-1.5 text-sm text-stone-600">
+                Includes {option.description}
+              </p>
             </div>
-            <p className="mt-1.5 text-sm text-stone-600">
-              Includes{" "}
-              <span className="font-semibold text-red-700">1 Meat</span>,{" "}
-              <span className="font-semibold text-emerald-700">2 Sides</span>,{" "}
-              <span className="font-semibold text-orange-700">Bread</span>,{" "}
-              <span className="font-semibold text-purple-700">Dessert</span>, and{" "}
-              <span className="font-semibold text-blue-700">Drink</span>.
-            </p>
-          </div>
-
-          <div className="bg-white p-5 rounded-2xl border border-stone-200 shadow-sm">
-            <div className="flex items-center justify-between">
-              <h2 className="text-lg font-bold text-stone-900">
-                1-Side or Veggie Plate
-              </h2>
-              <span className="text-2xl font-extrabold text-stone-900">$12</span>
-            </div>
-            <p className="mt-1.5 text-sm text-stone-600">
-              Includes{" "}
-              <span className="font-semibold text-red-700">1 Meat</span> +{" "}
-              <span className="font-semibold text-emerald-700">1 Side</span> +{" "}
-              <span className="font-semibold text-orange-700">Bread</span>, OR{" "}
-              <span className="font-semibold text-emerald-700">
-                3-Side Veggie Plate
-              </span>{" "}
-              + <span className="font-semibold text-orange-700">Bread</span>.
-            </p>
-          </div>
+          ))}
         </section>
 
         {/* COLOR-CODED MENU REFERENCE */}
@@ -246,7 +271,6 @@ export default function TeamPlateSaleHome() {
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
-            {/* MEATS - RED */}
             <div className="p-3.5 rounded-xl bg-red-50/50 border border-red-200">
               <h3 className="text-xs font-bold uppercase tracking-wider text-red-700 mb-2">
                 Meats
@@ -270,7 +294,6 @@ export default function TeamPlateSaleHome() {
               </div>
             </div>
 
-            {/* SIDES - GREEN */}
             <div className="p-3.5 rounded-xl bg-emerald-50/50 border border-emerald-200">
               <h3 className="text-xs font-bold uppercase tracking-wider text-emerald-700 mb-2">
                 Sides
@@ -294,7 +317,6 @@ export default function TeamPlateSaleHome() {
               </div>
             </div>
 
-            {/* BREAD - ORANGE */}
             <div className="p-3.5 rounded-xl bg-orange-50/50 border border-orange-200">
               <h3 className="text-xs font-bold uppercase tracking-wider text-orange-700 mb-2">
                 Bread
@@ -318,7 +340,6 @@ export default function TeamPlateSaleHome() {
               </div>
             </div>
 
-            {/* DRINKS - BLUE */}
             <div className="p-3.5 rounded-xl bg-blue-50/50 border border-blue-200">
               <h3 className="text-xs font-bold uppercase tracking-wider text-blue-700 mb-2">
                 Drinks
@@ -342,7 +363,6 @@ export default function TeamPlateSaleHome() {
               </div>
             </div>
 
-            {/* DESSERTS - PURPLE */}
             <div className="p-3.5 rounded-xl bg-purple-50/50 border border-purple-200">
               <h3 className="text-xs font-bold uppercase tracking-wider text-purple-700 mb-2">
                 Desserts

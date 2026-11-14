@@ -58,10 +58,22 @@ const db = getFirestore(app);
 // --- TYPES ---
 type PaymentMethod = "Cash" | "Cash App" | "Zelle";
 
+interface PlateTierOption {
+  id: string;
+  name: string;
+  price: number;
+  description: string;
+  maxSides: number;
+  veggieMaxSides?: number;
+  includesExtras: boolean;
+}
+
 interface Order {
   id: string;
   name: string;
-  tier: "full" | "small";
+  tier: string;
+  unitPrice?: number;
+  tierLabel?: string;
   meat: string;
   sides: string[];
   bread: string;
@@ -83,6 +95,7 @@ interface MenuData {
   desserts: string[];
   drinks: string[];
   soldOut?: string[];
+  plateOptions?: PlateTierOption[];
 }
 
 interface SaleInfo {
@@ -95,6 +108,26 @@ interface SaleInfo {
 }
 
 // --- DEFAULT DATA ---
+const DEFAULT_PLATE_OPTIONS: PlateTierOption[] = [
+  {
+    id: "full",
+    name: "Full Plate",
+    price: 15,
+    description: "1 Meat, 2 Sides, Bread, Dessert & Drink",
+    maxSides: 2,
+    includesExtras: true,
+  },
+  {
+    id: "small",
+    name: "1-Side / Veggie",
+    price: 12,
+    description: "1 Meat + 1 Side, OR 3-Side Veggie Plate",
+    maxSides: 1,
+    veggieMaxSides: 3,
+    includesExtras: false,
+  },
+];
+
 const INITIAL_MENU: MenuData = {
   meats: ["Ham", "Baked Turkey Wings", "Baked Chicken", "None (Veggie Plate)"],
   sides: [
@@ -109,6 +142,7 @@ const INITIAL_MENU: MenuData = {
   desserts: ["Chef's Choice", "Cake Slice", "No Dessert"],
   drinks: ["Bottled Water", "Soda", "No Drink"],
   soldOut: [],
+  plateOptions: DEFAULT_PLATE_OPTIONS,
 };
 
 const INITIAL_SALE_INFO: SaleInfo = {
@@ -117,7 +151,7 @@ const INITIAL_SALE_INFO: SaleInfo = {
   location: "Pickup Only",
   contact: "Text or Call to Confirm Orders",
   paymentMethods: "Cash • Cash App • Zelle",
-  note: "Full Plate ($15): 1 Meat, 2 Sides, Bread, Dessert & Drink | 1-Side or Veggie Plate ($12)",
+  note: "",
 };
 
 const SEED_ORDERS: Order[] = [
@@ -212,7 +246,7 @@ export default function AdminPlateSaleDashboard() {
 
   // Order Form State
   const [customerName, setCustomerName] = useState("");
-  const [tier, setTier] = useState<"full" | "small">("full");
+  const [tier, setTier] = useState<string>("full");
   const [selectedMeat, setSelectedMeat] = useState("Ham");
   const [selectedSides, setSelectedSides] = useState<string[]>([
     "Dressing",
@@ -231,6 +265,13 @@ export default function AdminPlateSaleDashboard() {
     "meats" | "sides" | "breads" | "drinks" | "desserts"
   >("sides");
   const [newItemName, setNewItemName] = useState("");
+
+  // New Plate Tier Form State
+  const [newTierName, setNewTierName] = useState("");
+  const [newTierPrice, setNewTierPrice] = useState("");
+  const [newTierDesc, setNewTierDesc] = useState("");
+  const [newTierSides, setNewTierSides] = useState(1);
+  const [newTierExtras, setNewTierExtras] = useState(false);
 
   useEffect(() => {
     signInAnonymously(auth).catch((err) => console.error("Auth error:", err));
@@ -268,12 +309,14 @@ export default function AdminPlateSaleDashboard() {
         const data = docSnap.data() as MenuData;
         const allowedDrinks = ["Bottled Water", "Soda", "No Drink"];
         const hasChefsChoiceDessert = data.desserts?.includes("Chef's Choice");
+        const hasPlateOptions =
+          data.plateOptions && data.plateOptions.length > 0;
         const needsDrinkSync =
           !data.drinks ||
           data.drinks.length !== allowedDrinks.length ||
           !allowedDrinks.every((d) => data.drinks.includes(d));
 
-        if (needsDrinkSync || !hasChefsChoiceDessert) {
+        if (needsDrinkSync || !hasChefsChoiceDessert || !hasPlateOptions) {
           const updatedDesserts = hasChefsChoiceDessert
             ? data.desserts
             : ["Chef's Choice", ...(data.desserts || ["Cake Slice", "No Dessert"])];
@@ -282,11 +325,18 @@ export default function AdminPlateSaleDashboard() {
             drinks: allowedDrinks,
             desserts: updatedDesserts,
             soldOut: data.soldOut || [],
+            plateOptions: hasPlateOptions
+              ? data.plateOptions
+              : DEFAULT_PLATE_OPTIONS,
           };
           await setDoc(menuDocRef, syncedMenu);
           setMenu(syncedMenu);
         } else {
-          setMenu({ ...data, soldOut: data.soldOut || [] });
+          setMenu({
+            ...data,
+            soldOut: data.soldOut || [],
+            plateOptions: data.plateOptions || DEFAULT_PLATE_OPTIONS,
+          });
         }
       } else {
         await setDoc(menuDocRef, INITIAL_MENU);
@@ -327,14 +377,45 @@ export default function AdminPlateSaleDashboard() {
     };
   }, [user]);
 
+  const plateOptions = menu.plateOptions || DEFAULT_PLATE_OPTIONS;
+  const activeTierObj =
+    plateOptions.find((p) => p.id === tier) || plateOptions[0];
   const soldOutList = menu.soldOut || [];
-  const unitPrice = tier === "full" ? 15 : 12;
+
+  const unitPrice = activeTierObj ? activeTierObj.price : 15;
   const calculatedTotal = unitPrice * qty;
+
+  const getOrderUnitPrice = (o: Order) => {
+    if (typeof o.unitPrice === "number") return o.unitPrice;
+    const found = plateOptions.find((p) => p.id === o.tier);
+    if (found) return found.price;
+    return o.tier === "full" ? 15 : 12;
+  };
+
+  const getOrderTierDisplay = (o: Order) => {
+    const price = getOrderUnitPrice(o);
+    const found = plateOptions.find((p) => p.id === o.tier);
+    const label =
+      found?.name ||
+      o.tierLabel ||
+      (o.tier === "full" ? "Full Plate" : "1-Side/Veggie");
+    return `${label} ($${price})`;
+  };
+
+  const getMaxSidesForSelection = (
+    tierObj: PlateTierOption,
+    meatChoice: string
+  ) => {
+    const isVeggie = meatChoice.toLowerCase().includes("veggie");
+    if (isVeggie && typeof tierObj.veggieMaxSides === "number") {
+      return tierObj.veggieMaxSides;
+    }
+    return tierObj.maxSides;
+  };
 
   const handleToggleSide = (side: string) => {
     if (soldOutList.includes(side)) return;
-    const isVeggie = selectedMeat.toLowerCase().includes("veggie");
-    const maxSides = tier === "full" ? 2 : isVeggie ? 3 : 1;
+    const maxSides = getMaxSidesForSelection(activeTierObj, selectedMeat);
 
     if (selectedSides.includes(side)) {
       setSelectedSides(selectedSides.filter((s) => s !== side));
@@ -345,11 +426,13 @@ export default function AdminPlateSaleDashboard() {
     }
   };
 
-  const handleTierChange = (newTier: "full" | "small") => {
-    setTier(newTier);
-    const isVeggie = selectedMeat.toLowerCase().includes("veggie");
-    if (newTier === "small" && !isVeggie && selectedSides.length > 1) {
-      setSelectedSides(selectedSides.slice(0, 1));
+  const handleTierChange = (newTierId: string) => {
+    setTier(newTierId);
+    const nextTier =
+      plateOptions.find((p) => p.id === newTierId) || plateOptions[0];
+    const maxSides = getMaxSidesForSelection(nextTier, selectedMeat);
+    if (selectedSides.length > maxSides) {
+      setSelectedSides(selectedSides.slice(0, maxSides));
     }
   };
 
@@ -363,12 +446,18 @@ export default function AdminPlateSaleDashboard() {
     const orderPayload: Order = {
       id,
       name: customerName.trim(),
-      tier,
+      tier: activeTierObj.id,
+      unitPrice: activeTierObj.price,
+      tierLabel: activeTierObj.name,
       meat: selectedMeat,
       sides: selectedSides,
       bread: selectedBread,
-      dessert: tier === "full" ? selectedDessert : "Not Included ($12 Plate)",
-      drink: tier === "full" ? selectedDrink : "Not Included ($12 Plate)",
+      dessert: activeTierObj.includesExtras
+        ? selectedDessert
+        : `Not Included ($${activeTierObj.price} Plate)`,
+      drink: activeTierObj.includesExtras
+        ? selectedDrink
+        : `Not Included ($${activeTierObj.price} Plate)`,
       qty: Math.max(1, qty),
       notes: notes.trim(),
       paid,
@@ -385,7 +474,7 @@ export default function AdminPlateSaleDashboard() {
   const resetForm = () => {
     setEditingOrderId(null);
     setCustomerName("");
-    setTier("full");
+    setTier(plateOptions[0]?.id || "full");
     setSelectedMeat(
       menu.meats.find((m) => !soldOutList.includes(m)) || menu.meats[0] || "Ham"
     );
@@ -414,7 +503,11 @@ export default function AdminPlateSaleDashboard() {
   const handleEditOrder = (order: Order) => {
     setEditingOrderId(order.id);
     setCustomerName(order.name);
-    setTier(order.tier);
+    setTier(
+      plateOptions.some((p) => p.id === order.tier)
+        ? order.tier
+        : plateOptions[0]?.id || "full"
+    );
     setSelectedMeat(order.meat || menu.meats[0] || "Ham");
     setSelectedSides(order.sides || []);
     setSelectedBread(order.bread || menu.breads[0] || "Roll");
@@ -435,7 +528,6 @@ export default function AdminPlateSaleDashboard() {
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
-  // Toggle Paid or set specific payment method
   const togglePaid = async (order: Order) => {
     const nextPaid = !Boolean(order.paid);
     await updateDoc(doc(db, "orders", order.id), {
@@ -460,7 +552,6 @@ export default function AdminPlateSaleDashboard() {
     });
   };
 
-  // Delete with Confirmation Prompt
   const handleDeleteOrder = async (order: Order) => {
     const confirmed = window.confirm(
       `Are you sure you want to delete ${order.name}'s order?`
@@ -471,7 +562,61 @@ export default function AdminPlateSaleDashboard() {
     if (editingOrderId === order.id) resetForm();
   };
 
-  // Menu Management & Sold Out Toggle
+  // Live Plate Option Editors
+  const handleUpdatePlateOption = async (
+    optionId: string,
+    patch: Partial<PlateTierOption>
+  ) => {
+    const updatedOptions = plateOptions.map((opt) =>
+      opt.id === optionId ? { ...opt, ...patch } : opt
+    );
+    await setDoc(doc(db, "settings", "menu"), {
+      ...menu,
+      plateOptions: updatedOptions,
+    });
+  };
+
+  const handleAddPlateOption = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const parsedPrice = parseFloat(newTierPrice);
+    if (!newTierName.trim() || isNaN(parsedPrice)) return;
+
+    const newOption: PlateTierOption = {
+      id: `tier-${Date.now()}`,
+      name: newTierName.trim(),
+      price: parsedPrice,
+      description:
+        newTierDesc.trim() ||
+        `1 Meat, ${newTierSides} Side${newTierSides > 1 ? "s" : ""} & Bread`,
+      maxSides: Math.max(0, newTierSides),
+      includesExtras: newTierExtras,
+    };
+
+    await setDoc(doc(db, "settings", "menu"), {
+      ...menu,
+      plateOptions: [...plateOptions, newOption],
+    });
+
+    setNewTierName("");
+    setNewTierPrice("");
+    setNewTierDesc("");
+    setNewTierSides(1);
+    setNewTierExtras(false);
+  };
+
+  const handleRemovePlateOption = async (optionId: string) => {
+    if (plateOptions.length <= 1) return;
+    const updatedOptions = plateOptions.filter((opt) => opt.id !== optionId);
+    await setDoc(doc(db, "settings", "menu"), {
+      ...menu,
+      plateOptions: updatedOptions,
+    });
+    if (tier === optionId) {
+      setTier(updatedOptions[0].id);
+    }
+  };
+
+  // Menu Item Editors
   const handleAddMenuItem = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newItemName.trim()) return;
@@ -523,7 +668,7 @@ export default function AdminPlateSaleDashboard() {
     let completedCount = 0;
 
     orders.forEach((o) => {
-      const price = (o.tier === "full" ? 15 : 12) * o.qty;
+      const price = getOrderUnitPrice(o) * o.qty;
       const isPaid = Boolean(o.paid);
       const isPickedUp = Boolean(o.pickedUp);
       const isInc = isOrderIncomplete(o);
@@ -558,7 +703,7 @@ export default function AdminPlateSaleDashboard() {
       incompleteCount,
       completedCount,
     };
-  }, [orders]);
+  }, [orders, plateOptions]);
 
   const prepTally = useMemo(() => {
     const counts: Record<string, Record<string, number>> = {
@@ -580,16 +725,16 @@ export default function AdminPlateSaleDashboard() {
         counts.Breads[o.bread] = (counts.Breads[o.bread] || 0) + o.qty;
       }
       if (
-        o.tier === "full" &&
         o.dessert &&
-        !o.dessert.toLowerCase().includes("no dessert")
+        !o.dessert.toLowerCase().includes("no dessert") &&
+        !o.dessert.toLowerCase().includes("not included")
       ) {
         counts.Desserts[o.dessert] = (counts.Desserts[o.dessert] || 0) + o.qty;
       }
       if (
-        o.tier === "full" &&
         o.drink &&
-        !o.drink.toLowerCase().includes("no drink")
+        !o.drink.toLowerCase().includes("no drink") &&
+        !o.drink.toLowerCase().includes("not included")
       ) {
         counts.Drinks[o.drink] = (counts.Drinks[o.drink] || 0) + o.qty;
       }
@@ -618,8 +763,8 @@ export default function AdminPlateSaleDashboard() {
     });
 
     return [...filtered].sort((a, b) => {
-      const totalA = (a.tier === "full" ? 15 : 12) * a.qty;
-      const totalB = (b.tier === "full" ? 15 : 12) * b.qty;
+      const totalA = getOrderUnitPrice(a) * a.qty;
+      const totalB = getOrderUnitPrice(b) * b.qty;
 
       if (sortBy === "alpha") {
         return a.name.localeCompare(b.name, undefined, { sensitivity: "base" });
@@ -635,18 +780,21 @@ export default function AdminPlateSaleDashboard() {
       }
       return (a.createdAt || 0) - (b.createdAt || 0);
     });
-  }, [orders, searchQuery, filterStatus, sortBy]);
+  }, [orders, searchQuery, filterStatus, sortBy, plateOptions]);
 
   const handleCopyPromo = () => {
     const available = (items: string[]) =>
       items.filter((i) => !soldOutList.includes(i));
 
+    const pricingLines = plateOptions
+      .map((opt) => `• ${opt.name} ($${opt.price}): ${opt.description}`)
+      .join("\n");
+
     const text = `🍽️ ${saleInfo.title.toUpperCase()} 🍽️
 📍 ${saleInfo.location}
 
 💲 PRICING:
-• Full Plate ($15): 1 Meat, 2 Sides, Bread, Dessert & Drink
-• 1-Side / Veggie Plate ($12): 1 Meat + 1 Side OR 3-Side Veggie Plate
+${pricingLines}
 
 🍖 MEATS: ${available(menu.meats)
       .filter((m) => !m.includes("None"))
@@ -673,7 +821,7 @@ export default function AdminPlateSaleDashboard() {
   const handleExportCSV = () => {
     const headers = [
       "Name",
-      "Tier",
+      "Plate Option",
       "Meat",
       "Sides",
       "Bread",
@@ -688,14 +836,14 @@ export default function AdminPlateSaleDashboard() {
     ];
     const rows = orders.map((o) => [
       `"${o.name}"`,
-      o.tier === "full" ? "Full Plate ($15)" : "1-Side/Veggie ($12)",
+      `"${getOrderTierDisplay(o)}"`,
       `"${o.meat}"`,
       `"${(o.sides || []).join(", ")}"`,
       `"${o.bread}"`,
       `"${o.dessert}"`,
       `"${o.drink}"`,
       o.qty,
-      (o.tier === "full" ? 15 : 12) * o.qty,
+      getOrderUnitPrice(o) * o.qty,
       o.paid ? "Yes" : "No",
       o.paid ? o.paymentMethod || "Cash" : "",
       o.pickedUp ? "Yes" : "No",
@@ -713,19 +861,21 @@ export default function AdminPlateSaleDashboard() {
   return (
     <div className="min-h-screen bg-stone-50 text-stone-900 pb-16">
       {/* TOP HEADER */}
-      <header className="bg-amber-900 text-amber-50 shadow-md">
+      <header className="bg-rose-950 text-rose-50 shadow-md">
         <div className="max-w-6xl mx-auto px-4 py-5 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
           <div>
             <div className="flex flex-wrap items-center gap-2.5">
               <Utensils className="w-6 h-6 text-amber-300" />
               <h1 className="text-2xl font-bold tracking-tight">{saleInfo.title}</h1>
             </div>
-            <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs sm:text-sm text-amber-200">
+            <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs sm:text-sm text-rose-200">
               <span className="flex items-center gap-1">
-                <MapPin className="w-3.5 h-3.5" /> {saleInfo.location}
+                <MapPin className="w-3.5 h-3.5 text-amber-300" />{" "}
+                {saleInfo.location}
               </span>
               <span className="flex items-center gap-1">
-                <DollarSign className="w-3.5 h-3.5" /> {saleInfo.paymentMethods}
+                <DollarSign className="w-3.5 h-3.5 text-amber-300" />{" "}
+                {saleInfo.paymentMethods}
               </span>
             </div>
           </div>
@@ -733,13 +883,13 @@ export default function AdminPlateSaleDashboard() {
           <div className="flex flex-wrap items-center gap-2">
             <Link
               href="/"
-              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold bg-amber-950/60 hover:bg-amber-950 text-amber-100 border border-amber-700 transition"
+              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold bg-rose-900/70 hover:bg-rose-900 text-rose-100 border border-rose-800 transition"
             >
               <ArrowLeft className="w-3.5 h-3.5" /> Home
             </Link>
             <button
               onClick={handleCopyPromo}
-              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold bg-amber-800 hover:bg-amber-700 text-amber-100 border border-amber-700 transition cursor-pointer"
+              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold bg-rose-900 hover:bg-rose-800 text-rose-100 border border-rose-700 transition cursor-pointer"
             >
               {copiedMenu ? (
                 <Check className="w-4 h-4 text-emerald-300" />
@@ -750,7 +900,7 @@ export default function AdminPlateSaleDashboard() {
             </button>
             <button
               onClick={() => setShowInfoModal(true)}
-              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold bg-amber-50 text-amber-950 hover:bg-amber-100 transition cursor-pointer"
+              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold bg-amber-400 text-rose-950 hover:bg-amber-300 transition cursor-pointer"
             >
               <Edit3 className="w-4 h-4" /> Edit Sale Info
             </button>
@@ -764,7 +914,7 @@ export default function AdminPlateSaleDashboard() {
           <div className="bg-white p-4 rounded-xl border border-stone-200 shadow-sm">
             <div className="flex items-center justify-between text-stone-500 text-xs font-medium uppercase">
               <span>Total Plates</span>
-              <Users className="w-4 h-4 text-amber-600" />
+              <Users className="w-4 h-4 text-rose-700" />
             </div>
             <p className="mt-1.5 text-2xl font-bold text-stone-900">
               {stats.totalPlates}
@@ -818,7 +968,7 @@ export default function AdminPlateSaleDashboard() {
               onClick={() => setActiveTab("orders")}
               className={`px-4 py-2 rounded-lg text-sm font-semibold transition cursor-pointer ${
                 activeTab === "orders"
-                  ? "bg-amber-800 text-white shadow-sm"
+                  ? "bg-rose-900 text-white shadow-sm"
                   : "bg-white text-stone-700 border border-stone-200 hover:bg-stone-100"
               }`}
             >
@@ -828,7 +978,7 @@ export default function AdminPlateSaleDashboard() {
               onClick={() => setActiveTab("prep")}
               className={`px-4 py-2 rounded-lg text-sm font-semibold transition cursor-pointer flex items-center gap-1.5 ${
                 activeTab === "prep"
-                  ? "bg-amber-800 text-white shadow-sm"
+                  ? "bg-rose-900 text-white shadow-sm"
                   : "bg-white text-stone-700 border border-stone-200 hover:bg-stone-100"
               }`}
             >
@@ -838,7 +988,7 @@ export default function AdminPlateSaleDashboard() {
               onClick={() => setActiveTab("menu")}
               className={`px-4 py-2 rounded-lg text-sm font-semibold transition cursor-pointer flex items-center gap-1.5 ${
                 activeTab === "menu"
-                  ? "bg-amber-800 text-white shadow-sm"
+                  ? "bg-rose-900 text-white shadow-sm"
                   : "bg-white text-stone-700 border border-stone-200 hover:bg-stone-100"
               }`}
             >
@@ -887,50 +1037,44 @@ export default function AdminPlateSaleDashboard() {
                   placeholder="e.g., Aunt Mae, Marcus..."
                   value={customerName}
                   onChange={(e) => setCustomerName(e.target.value)}
-                  className="w-full px-3.5 py-2 rounded-lg border border-stone-300 text-sm focus:outline-none focus:ring-2 focus:ring-amber-600"
+                  className="w-full px-3.5 py-2 rounded-lg border border-stone-300 text-sm focus:outline-none focus:ring-2 focus:ring-rose-700"
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-semibold uppercase text-stone-600 mb-1.5">
-                  Select Plate Option
-                </label>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="block text-xs font-semibold uppercase text-stone-600">
+                    Select Plate Option
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab("menu")}
+                    className="text-[11px] font-bold text-rose-800 hover:underline cursor-pointer"
+                  >
+                    Edit Options →
+                  </button>
+                </div>
                 <div className="grid grid-cols-2 gap-2.5">
-                  <button
-                    type="button"
-                    onClick={() => handleTierChange("full")}
-                    className={`p-3 rounded-xl border text-left transition cursor-pointer ${
-                      tier === "full"
-                        ? "border-amber-700 bg-amber-50 ring-2 ring-amber-600/30"
-                        : "border-stone-200 hover:bg-stone-50"
-                    }`}
-                  >
-                    <div className="flex items-center justify-between font-bold text-sm text-stone-900">
-                      <span>Full Plate</span>
-                      <span className="text-amber-800">$15</span>
-                    </div>
-                    <p className="text-[11px] text-stone-500 mt-1 leading-tight">
-                      1 Meat, 2 Sides, Bread, Dessert & Drink
-                    </p>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => handleTierChange("small")}
-                    className={`p-3 rounded-xl border text-left transition cursor-pointer ${
-                      tier === "small"
-                        ? "border-amber-700 bg-amber-50 ring-2 ring-amber-600/30"
-                        : "border-stone-200 hover:bg-stone-50"
-                    }`}
-                  >
-                    <div className="flex items-center justify-between font-bold text-sm text-stone-900">
-                      <span>1-Side / Veggie</span>
-                      <span className="text-amber-800">$12</span>
-                    </div>
-                    <p className="text-[11px] text-stone-500 mt-1 leading-tight">
-                      1 Meat + 1 Side, OR 3-Side Veggie Plate
-                    </p>
-                  </button>
+                  {plateOptions.map((opt) => (
+                    <button
+                      type="button"
+                      key={opt.id}
+                      onClick={() => handleTierChange(opt.id)}
+                      className={`p-3 rounded-xl border text-left transition cursor-pointer ${
+                        tier === opt.id
+                          ? "border-rose-800 bg-rose-50/70 ring-2 ring-rose-700/25"
+                          : "border-stone-200 hover:bg-stone-50"
+                      }`}
+                    >
+                      <div className="flex items-center justify-between font-bold text-sm text-stone-900">
+                        <span>{opt.name}</span>
+                        <span className="text-rose-900">${opt.price}</span>
+                      </div>
+                      <p className="text-[11px] text-stone-500 mt-1 leading-tight">
+                        {opt.description}
+                      </p>
+                    </button>
+                  ))}
                 </div>
               </div>
 
@@ -967,12 +1111,7 @@ export default function AdminPlateSaleDashboard() {
               <div>
                 <label className="block text-xs font-bold uppercase text-emerald-700 mb-1">
                   Sides (Pick up to{" "}
-                  {tier === "full"
-                    ? "2"
-                    : selectedMeat.toLowerCase().includes("veggie")
-                    ? "3"
-                    : "1"}
-                  )
+                  {getMaxSidesForSelection(activeTierObj, selectedMeat)})
                 </label>
                 <div className="flex flex-wrap gap-1.5">
                   {menu.sides.map((side) => {
@@ -1029,7 +1168,7 @@ export default function AdminPlateSaleDashboard() {
                   </div>
                 </div>
 
-                {tier === "full" && (
+                {activeTierObj.includesExtras && (
                   <>
                     <div>
                       <label className="block text-xs font-bold uppercase text-blue-700 mb-1">
@@ -1179,7 +1318,7 @@ export default function AdminPlateSaleDashboard() {
 
               <button
                 type="submit"
-                className="w-full py-3 rounded-xl bg-amber-800 hover:bg-amber-900 text-white font-bold text-sm shadow-sm flex items-center justify-center gap-2 transition cursor-pointer"
+                className="w-full py-3 rounded-xl bg-rose-900 hover:bg-rose-950 text-white font-bold text-sm shadow-sm flex items-center justify-center gap-2 transition cursor-pointer"
               >
                 <Plus className="w-4 h-4" />
                 {editingOrderId
@@ -1199,7 +1338,7 @@ export default function AdminPlateSaleDashboard() {
                       placeholder="Search name, meat, or side..."
                       value={searchQuery}
                       onChange={(e) => setSearchQuery(e.target.value)}
-                      className="w-full pl-9 pr-3 py-1.5 rounded-lg border border-stone-200 text-sm focus:outline-none focus:ring-2 focus:ring-amber-600"
+                      className="w-full pl-9 pr-3 py-1.5 rounded-lg border border-stone-200 text-sm focus:outline-none focus:ring-2 focus:ring-rose-700"
                     />
                   </div>
 
@@ -1217,7 +1356,7 @@ export default function AdminPlateSaleDashboard() {
                             | "lowest"
                         )
                       }
-                      className="px-2.5 py-1.5 rounded-lg border border-stone-200 text-xs font-semibold bg-stone-50 text-stone-700 cursor-pointer focus:outline-none focus:ring-2 focus:ring-amber-600"
+                      className="px-2.5 py-1.5 rounded-lg border border-stone-200 text-xs font-semibold bg-stone-50 text-stone-700 cursor-pointer focus:outline-none focus:ring-2 focus:ring-rose-700"
                     >
                       <option value="oldest">Order Added (First → Last)</option>
                       <option value="newest">Newest First</option>
@@ -1302,8 +1441,7 @@ export default function AdminPlateSaleDashboard() {
               ) : (
                 <div className="space-y-3">
                   {displayedOrders.map((order) => {
-                    const orderTotal =
-                      (order.tier === "full" ? 15 : 12) * order.qty;
+                    const orderTotal = getOrderUnitPrice(order) * order.qty;
                     const isInc = isOrderIncomplete(order);
                     return (
                       <div
@@ -1322,11 +1460,8 @@ export default function AdminPlateSaleDashboard() {
                               <h3 className="font-bold text-base text-stone-900">
                                 {order.name}
                               </h3>
-                              <span className="px-2 py-0.5 rounded-md text-xs font-bold bg-amber-100 text-amber-900">
-                                {order.qty}x{" "}
-                                {order.tier === "full"
-                                  ? "Full ($15)"
-                                  : "1-Side/Veggie ($12)"}
+                              <span className="px-2 py-0.5 rounded-md text-xs font-bold bg-rose-100 text-rose-950">
+                                {order.qty}x {getOrderTierDisplay(order)}
                               </span>
                               {isInc && (
                                 <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-semibold bg-amber-200 text-amber-950">
@@ -1365,15 +1500,13 @@ export default function AdminPlateSaleDashboard() {
                                     {order.bread}
                                   </span>
                                 )}
-                                {order.tier === "full" &&
-                                  order.drink &&
+                                {order.drink &&
                                   !order.drink.includes("Not Included") && (
                                     <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-blue-100 text-blue-900">
                                       {order.drink}
                                     </span>
                                   )}
-                                {order.tier === "full" &&
-                                  order.dessert &&
+                                {order.dessert &&
                                   !order.dessert.includes("Not Included") && (
                                     <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-purple-100 text-purple-900">
                                       {order.dessert}
@@ -1396,7 +1529,6 @@ export default function AdminPlateSaleDashboard() {
                           </div>
                         </div>
 
-                        {/* QUICK ACTION PILLS & PAYMENT METHOD TAGGING */}
                         <div className="mt-3 pt-3 border-t border-stone-100 flex flex-wrap items-center justify-between gap-2">
                           <div className="flex flex-wrap items-center gap-1.5">
                             <button
@@ -1418,7 +1550,6 @@ export default function AdminPlateSaleDashboard() {
                                 : "Mark Paid"}
                             </button>
 
-                            {/* Payment Method Tag Pills */}
                             {(
                               ["Cash", "Cash App", "Zelle"] as PaymentMethod[]
                             ).map((method) => {
@@ -1465,7 +1596,7 @@ export default function AdminPlateSaleDashboard() {
                             <button
                               type="button"
                               onClick={() => handleEditOrder(order)}
-                              className="p-1.5 rounded-lg text-stone-500 hover:text-amber-800 hover:bg-amber-50 transition cursor-pointer"
+                              className="p-1.5 rounded-lg text-stone-500 hover:text-rose-900 hover:bg-rose-50 transition cursor-pointer"
                               title="Edit Order"
                             >
                               <Edit3 className="w-4 h-4" />
@@ -1497,7 +1628,7 @@ export default function AdminPlateSaleDashboard() {
                 key={category}
                 className="bg-white p-5 rounded-2xl border border-stone-200 shadow-sm"
               >
-                <h3 className="font-bold text-base text-amber-900 border-b border-stone-100 pb-2 mb-3">
+                <h3 className="font-bold text-base text-rose-950 border-b border-stone-100 pb-2 mb-3">
                   {category} Needed
                 </h3>
                 {Object.keys(items).length === 0 ? (
@@ -1512,7 +1643,7 @@ export default function AdminPlateSaleDashboard() {
                         <span className="text-stone-700 font-medium">
                           {itemName}
                         </span>
-                        <span className="px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-950 font-bold text-xs">
+                        <span className="px-2.5 py-0.5 rounded-full bg-rose-100 text-rose-950 font-bold text-xs">
                           {count} servings
                         </span>
                       </li>
@@ -1524,9 +1655,180 @@ export default function AdminPlateSaleDashboard() {
           </div>
         )}
 
-        {/* TAB 3: MENU & OFFERINGS EDITOR (COLOR-CODED + SOLD OUT TOGGLE) */}
+        {/* TAB 3: MENU & PLATE OPTIONS EDITOR */}
         {activeTab === "menu" && (
           <div className="space-y-6">
+            {/* LIVE PLATE OPTIONS & PRICING EDITOR */}
+            <div className="bg-white p-5 rounded-2xl border border-rose-200 shadow-sm space-y-4">
+              <div>
+                <h3 className="font-bold text-base text-rose-950">
+                  Plate Options & Pricing
+                </h3>
+                <p className="text-xs text-stone-500">
+                  Edit plate names, prices, side limits, or add new plate tiers
+                  on the spot.
+                </p>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                {plateOptions.map((opt) => (
+                  <div
+                    key={opt.id}
+                    className="p-3.5 rounded-xl border border-stone-200 bg-stone-50/70 space-y-2.5"
+                  >
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="text"
+                        value={opt.name}
+                        onChange={(e) =>
+                          handleUpdatePlateOption(opt.id, {
+                            name: e.target.value,
+                          })
+                        }
+                        className="flex-1 px-2.5 py-1.5 rounded-lg border border-stone-300 bg-white text-sm font-bold"
+                        placeholder="Plate Name"
+                      />
+                      <div className="flex items-center bg-white border border-stone-300 rounded-lg px-2">
+                        <span className="text-xs font-bold text-stone-500">
+                          $
+                        </span>
+                        <input
+                          type="number"
+                          min={0}
+                          step="1"
+                          value={opt.price}
+                          onChange={(e) =>
+                            handleUpdatePlateOption(opt.id, {
+                              price: Math.max(
+                                0,
+                                parseFloat(e.target.value) || 0
+                              ),
+                            })
+                          }
+                          className="w-14 py-1.5 pl-1 text-sm font-extrabold text-rose-950 focus:outline-none"
+                        />
+                      </div>
+                      {plateOptions.length > 1 && (
+                        <button
+                          type="button"
+                          onClick={() => handleRemovePlateOption(opt.id)}
+                          className="p-1.5 text-stone-400 hover:text-red-700 cursor-pointer"
+                          title="Remove Plate Option"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      )}
+                    </div>
+
+                    <input
+                      type="text"
+                      value={opt.description}
+                      onChange={(e) =>
+                        handleUpdatePlateOption(opt.id, {
+                          description: e.target.value,
+                        })
+                      }
+                      className="w-full px-2.5 py-1.5 rounded-lg border border-stone-300 bg-white text-xs text-stone-700"
+                      placeholder="What is included..."
+                    />
+
+                    <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-stone-600">
+                      <label className="inline-flex items-center gap-1.5 font-medium">
+                        Max Sides:
+                        <input
+                          type="number"
+                          min={0}
+                          max={6}
+                          value={opt.maxSides}
+                          onChange={(e) =>
+                            handleUpdatePlateOption(opt.id, {
+                              maxSides: Math.max(
+                                0,
+                                parseInt(e.target.value) || 0
+                              ),
+                            })
+                          }
+                          className="w-12 px-1.5 py-0.5 rounded border border-stone-300 bg-white font-bold text-center"
+                        />
+                      </label>
+
+                      <label className="inline-flex items-center gap-1.5 font-medium cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={opt.includesExtras}
+                          onChange={(e) =>
+                            handleUpdatePlateOption(opt.id, {
+                              includesExtras: e.target.checked,
+                            })
+                          }
+                          className="rounded text-rose-800"
+                        />
+                        Includes Drink & Dessert
+                      </label>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Add New Plate Option */}
+              <form
+                onSubmit={handleAddPlateOption}
+                className="pt-2 border-t border-stone-100 flex flex-col sm:flex-row flex-wrap gap-2"
+              >
+                <input
+                  type="text"
+                  placeholder="New plate name (e.g., Kid's Plate)"
+                  value={newTierName}
+                  onChange={(e) => setNewTierName(e.target.value)}
+                  className="flex-1 min-w-[160px] px-3 py-1.5 rounded-lg border border-stone-300 text-xs"
+                />
+                <input
+                  type="number"
+                  min={0}
+                  step="1"
+                  placeholder="Price ($)"
+                  value={newTierPrice}
+                  onChange={(e) => setNewTierPrice(e.target.value)}
+                  className="w-24 px-3 py-1.5 rounded-lg border border-stone-300 text-xs"
+                />
+                <input
+                  type="text"
+                  placeholder="Description (e.g., 1 Meat, 1 Side & Drink)"
+                  value={newTierDesc}
+                  onChange={(e) => setNewTierDesc(e.target.value)}
+                  className="flex-1 min-w-[180px] px-3 py-1.5 rounded-lg border border-stone-300 text-xs"
+                />
+                <label className="inline-flex items-center gap-1 px-2 text-xs text-stone-600">
+                  Sides:
+                  <input
+                    type="number"
+                    min={0}
+                    max={6}
+                    value={newTierSides}
+                    onChange={(e) =>
+                      setNewTierSides(Math.max(0, parseInt(e.target.value) || 0))
+                    }
+                    className="w-11 px-1.5 py-1 rounded border border-stone-300 text-xs text-center"
+                  />
+                </label>
+                <label className="inline-flex items-center gap-1.5 px-2 text-xs text-stone-600 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={newTierExtras}
+                    onChange={(e) => setNewTierExtras(e.target.checked)}
+                  />
+                  Drink & Dessert
+                </label>
+                <button
+                  type="submit"
+                  className="px-4 py-1.5 rounded-lg bg-rose-900 hover:bg-rose-950 text-white text-xs font-bold cursor-pointer"
+                >
+                  + Add Plate Option
+                </button>
+              </form>
+            </div>
+
+            {/* ADD FOOD / DRINK ITEM */}
             <form
               onSubmit={handleAddMenuItem}
               className="bg-white p-4 rounded-2xl border border-stone-200 shadow-sm flex flex-col sm:flex-row gap-3"
@@ -1553,25 +1855,20 @@ export default function AdminPlateSaleDashboard() {
               </select>
               <input
                 type="text"
-                placeholder="Add new item..."
+                placeholder="Add new food or drink item..."
                 value={newItemName}
                 onChange={(e) => setNewItemName(e.target.value)}
                 className="flex-1 px-3.5 py-2 rounded-lg border border-stone-300 text-sm"
               />
               <button
                 type="submit"
-                className="px-5 py-2 rounded-lg bg-amber-800 hover:bg-amber-900 text-white font-semibold text-sm cursor-pointer"
+                className="px-5 py-2 rounded-lg bg-rose-900 hover:bg-rose-950 text-white font-semibold text-sm cursor-pointer"
               >
                 Add to Menu
               </button>
             </form>
 
-            <p className="text-xs text-stone-500">
-              Tip: Click the <span className="font-semibold">Sold Out</span>{" "}
-              badge on any item to disable it in the order form without deleting
-              it.
-            </p>
-
+            {/* COLOR-CODED MENU CARDS WITH SOLD-OUT TOGGLES */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {(
                 [
@@ -1746,7 +2043,7 @@ export default function AdminPlateSaleDashboard() {
                   await setDoc(doc(db, "settings", "saleInfo"), saleInfo);
                   setShowInfoModal(false);
                 }}
-                className="px-4 py-2 rounded-lg text-xs font-semibold bg-amber-800 text-white hover:bg-amber-900 cursor-pointer"
+                className="px-4 py-2 rounded-lg text-xs font-semibold bg-rose-900 text-white hover:bg-rose-950 cursor-pointer"
               >
                 Save & Sync Info
               </button>
