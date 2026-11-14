@@ -163,46 +163,58 @@ export default function TeamPlateSaleHome() {
   return (
     <div className="min-h-screen bg-stone-50 text-stone-900 pb-16">
       {/* TOP BAR */}
-      <nav className="bg-amber-950 text-amber-100 border-b border-amber-900/60">
+      <nav className="bg-rose-950 text-rose-100 border-b border-rose-900/70">
         <div className="max-w-5xl mx-auto px-4 py-3 flex items-center justify-between">
           <div className="flex items-center gap-2 font-bold text-sm tracking-wide">
-            <Utensils className="w-4 h-4 text-amber-400" />
+            <Utensils className="w-4 h-4 text-amber-300" />
             <span>{saleInfo.title}</span>
           </div>
 
           <Link
             href="/admin"
-            className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-bold bg-amber-400 hover:bg-amber-300 text-amber-950 transition"
+            className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-bold bg-amber-400 hover:bg-amber-300 text-rose-950 transition"
           >
             <ClipboardList className="w-3.5 h-3.5" /> Open Order Tracker
           </Link>
         </div>
       </nav>
 
-      {/* COMPACT HERO */}
-      <header className="bg-gradient-to-br from-amber-900 via-amber-800 to-stone-900 text-amber-50">
-        <div className="max-w-5xl mx-auto px-4 py-10 sm:py-12 text-center space-y-4">
-          <h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight text-white">
-            {saleInfo.title}
-          </h1>
-
-          <div className="pt-1 flex flex-wrap items-center justify-center gap-2.5 text-xs sm:text-sm text-amber-100">
-            <span className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-white/10">
-              <MapPin className="w-4 h-4 text-amber-300" /> {saleInfo.location}
-            </span>
-            <span className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-white/10">
-              <DollarSign className="w-4 h-4 text-amber-300" />{" "}
-              {saleInfo.paymentMethods}
-            </span>
+      {/* BURGUNDY WINE HERO WITH FRAMED GRAPHIC */}
+      <header className="bg-gradient-to-br from-rose-950 via-red-950 to-stone-950 text-rose-50">
+        <div className="max-w-5xl mx-auto px-4 py-10 sm:py-12 flex flex-col sm:flex-row items-center justify-center gap-6 sm:gap-8 text-center sm:text-left">
+          {/* Wine Graphic Card */}
+          <div className="shrink-0 w-28 h-28 sm:w-32 sm:h-32 rounded-2xl overflow-hidden bg-stone-200 border-2 border-amber-300/40 shadow-lg">
+            <img
+              src="/lov-wine.jpeg"
+              alt="Ladies of the Vineyard Wine Graphic"
+              className="w-full h-full object-cover"
+            />
           </div>
 
-          <div className="pt-2">
-            <Link
-              href="/admin"
-              className="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-amber-400 hover:bg-amber-300 text-amber-950 font-extrabold text-sm shadow-md transition"
-            >
-              Manage Orders, Prep Tally & Menu <ArrowRight className="w-4 h-4" />
-            </Link>
+          {/* Title, Badges & Action Button */}
+          <div className="space-y-4">
+            <h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight text-white">
+              {saleInfo.title}
+            </h1>
+
+            <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2.5 text-xs sm:text-sm text-rose-100">
+              <span className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-white/10 border border-rose-300/15">
+                <MapPin className="w-4 h-4 text-amber-300" /> {saleInfo.location}
+              </span>
+              <span className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-white/10 border border-rose-300/15">
+                <DollarSign className="w-4 h-4 text-amber-300" />{" "}
+                {saleInfo.paymentMethods}
+              </span>
+            </div>
+
+            <div>
+              <Link
+                href="/admin"
+                className="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-amber-400 hover:bg-amber-300 text-rose-950 font-extrabold text-sm shadow-lg transition"
+              >
+                Manage Orders, Prep Tally & Menu <ArrowRight className="w-4 h-4" />
+              </Link>
+            </div>
           </div>
         </div>
       </header>
@@ -212,7 +224,7 @@ export default function TeamPlateSaleHome() {
         <section className="grid grid-cols-3 gap-3 sm:gap-4">
           <div className="bg-white p-4 rounded-2xl border border-stone-200 shadow-sm text-center">
             <div className="flex items-center justify-center gap-1 text-xs font-semibold uppercase text-stone-500">
-              <Users className="w-3.5 h-3.5 text-amber-600" /> Total Plates
+              <Users className="w-3.5 h-3.5 text-rose-700" /> Total Plates
             </div>
             <p className="mt-1 text-2xl font-extrabold text-stone-900">
               {totalPlates}
@@ -240,12 +252,12 @@ export default function TeamPlateSaleHome() {
 
         {/* PLATE PRICING REFERENCE */}
         <section className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div className="bg-white p-5 rounded-2xl border-2 border-amber-600/30 shadow-sm">
+          <div className="bg-white p-5 rounded-2xl border-2 border-rose-900/20 shadow-sm">
             <div className="flex items-center justify-between">
               <h2 className="text-lg font-bold text-stone-900">
                 Full Dinner Plate
               </h2>
-              <span className="text-2xl font-extrabold text-amber-900">$15</span>
+              <span className="text-2xl font-extrabold text-rose-950">$15</span>
             </div>
             <p className="mt-1.5 text-sm text-stone-600">
               Includes{" "}
@@ -290,7 +302,7 @@ export default function TeamPlateSaleHome() {
             </div>
             <Link
               href="/admin"
-              className="text-xs font-bold text-amber-800 hover:underline"
+              className="text-xs font-bold text-rose-900 hover:underline"
             >
               Edit Menu →
             </Link>
