@@ -34,13 +34,11 @@ import {
   Search,
   Download,
   MapPin,
-  Calendar,
   AlertCircle,
-  Wifi,
-  WifiOff,
   Sparkles,
   ArrowLeft,
   ArrowUpDown,
+  Ban,
 } from "lucide-react";
 
 // --- FIREBASE INITIALIZATION ---
@@ -58,6 +56,8 @@ const auth = getAuth(app);
 const db = getFirestore(app);
 
 // --- TYPES ---
+type PaymentMethod = "Cash" | "Cash App" | "Zelle";
+
 interface Order {
   id: string;
   name: string;
@@ -70,6 +70,7 @@ interface Order {
   qty: number;
   notes: string;
   paid: boolean;
+  paymentMethod?: PaymentMethod;
   pickedUp: boolean;
   incomplete: boolean;
   createdAt: number;
@@ -81,6 +82,7 @@ interface MenuData {
   breads: string[];
   desserts: string[];
   drinks: string[];
+  soldOut?: string[];
 }
 
 interface SaleInfo {
@@ -106,11 +108,12 @@ const INITIAL_MENU: MenuData = {
   breads: ["Roll", "Cornbread", "No Bread"],
   desserts: ["Chef's Choice", "Cake Slice", "No Dessert"],
   drinks: ["Bottled Water", "Soda", "No Drink"],
+  soldOut: [],
 };
 
 const INITIAL_SALE_INFO: SaleInfo = {
   title: "LOV Plate Sale",
-  dateTime: "Saturday • Starting at 12:00 PM until Sold Out",
+  dateTime: "",
   location: "Pickup Only",
   contact: "Text or Call to Confirm Orders",
   paymentMethods: "Cash • Cash App • Zelle",
@@ -221,9 +224,12 @@ export default function AdminPlateSaleDashboard() {
   const [qty, setQty] = useState(1);
   const [notes, setNotes] = useState("");
   const [paid, setPaid] = useState(false);
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("Cash");
 
   // Menu Editor State
-  const [newItemCategory, setNewItemCategory] = useState<keyof MenuData>("sides");
+  const [newItemCategory, setNewItemCategory] = useState<
+    "meats" | "sides" | "breads" | "drinks" | "desserts"
+  >("sides");
   const [newItemName, setNewItemName] = useState("");
 
   useEffect(() => {
@@ -275,11 +281,12 @@ export default function AdminPlateSaleDashboard() {
             ...data,
             drinks: allowedDrinks,
             desserts: updatedDesserts,
+            soldOut: data.soldOut || [],
           };
           await setDoc(menuDocRef, syncedMenu);
           setMenu(syncedMenu);
         } else {
-          setMenu(data);
+          setMenu({ ...data, soldOut: data.soldOut || [] });
         }
       } else {
         await setDoc(menuDocRef, INITIAL_MENU);
@@ -294,12 +301,14 @@ export default function AdminPlateSaleDashboard() {
           info.location?.toLowerCase().includes("delivery");
         const needsTitleUpdate =
           info.title === "LOV, Plate Sale" || info.title === "Family Plate Sale";
+        const needsDateRemoval = info.dateTime?.includes("Saturday");
 
-        if (needsLocationUpdate || needsTitleUpdate) {
+        if (needsLocationUpdate || needsTitleUpdate || needsDateRemoval) {
           const updatedInfo: SaleInfo = {
             ...info,
             title: needsTitleUpdate ? "LOV Plate Sale" : info.title,
             location: needsLocationUpdate ? "Pickup Only" : info.location,
+            dateTime: needsDateRemoval ? "" : info.dateTime,
           };
           await setDoc(infoDocRef, updatedInfo);
           setSaleInfo(updatedInfo);
@@ -318,10 +327,12 @@ export default function AdminPlateSaleDashboard() {
     };
   }, [user]);
 
+  const soldOutList = menu.soldOut || [];
   const unitPrice = tier === "full" ? 15 : 12;
   const calculatedTotal = unitPrice * qty;
 
   const handleToggleSide = (side: string) => {
+    if (soldOutList.includes(side)) return;
     const isVeggie = selectedMeat.toLowerCase().includes("veggie");
     const maxSides = tier === "full" ? 2 : isVeggie ? 3 : 1;
 
@@ -361,6 +372,7 @@ export default function AdminPlateSaleDashboard() {
       qty: Math.max(1, qty),
       notes: notes.trim(),
       paid,
+      paymentMethod: paid ? paymentMethod : undefined,
       pickedUp: existing ? Boolean(existing.pickedUp) : false,
       incomplete: !selectedMeat || selectedSides.length === 0,
       createdAt: existing ? existing.createdAt : Date.now(),
@@ -374,14 +386,29 @@ export default function AdminPlateSaleDashboard() {
     setEditingOrderId(null);
     setCustomerName("");
     setTier("full");
-    setSelectedMeat(menu.meats[0] || "Ham");
-    setSelectedSides(menu.sides.slice(0, 2));
-    setSelectedBread(menu.breads[0] || "Roll");
-    setSelectedDessert(menu.desserts[0] || "Chef's Choice");
-    setSelectedDrink(menu.drinks[0] || "Bottled Water");
+    setSelectedMeat(
+      menu.meats.find((m) => !soldOutList.includes(m)) || menu.meats[0] || "Ham"
+    );
+    setSelectedSides(
+      menu.sides.filter((s) => !soldOutList.includes(s)).slice(0, 2)
+    );
+    setSelectedBread(
+      menu.breads.find((b) => !soldOutList.includes(b)) || menu.breads[0] || "Roll"
+    );
+    setSelectedDessert(
+      menu.desserts.find((d) => !soldOutList.includes(d)) ||
+        menu.desserts[0] ||
+        "Chef's Choice"
+    );
+    setSelectedDrink(
+      menu.drinks.find((dr) => !soldOutList.includes(dr)) ||
+        menu.drinks[0] ||
+        "Bottled Water"
+    );
     setQty(1);
     setNotes("");
     setPaid(false);
+    setPaymentMethod("Cash");
   };
 
   const handleEditOrder = (order: Order) => {
@@ -404,11 +431,27 @@ export default function AdminPlateSaleDashboard() {
     setQty(order.qty);
     setNotes(order.notes);
     setPaid(Boolean(order.paid));
+    setPaymentMethod(order.paymentMethod || "Cash");
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
+  // Toggle Paid or set specific payment method
   const togglePaid = async (order: Order) => {
-    await updateDoc(doc(db, "orders", order.id), { paid: !Boolean(order.paid) });
+    const nextPaid = !Boolean(order.paid);
+    await updateDoc(doc(db, "orders", order.id), {
+      paid: nextPaid,
+      paymentMethod: nextPaid ? order.paymentMethod || "Cash" : null,
+    });
+  };
+
+  const handleSetPaymentMethod = async (
+    order: Order,
+    method: PaymentMethod
+  ) => {
+    await updateDoc(doc(db, "orders", order.id), {
+      paid: true,
+      paymentMethod: method,
+    });
   };
 
   const togglePickedUp = async (order: Order) => {
@@ -417,11 +460,18 @@ export default function AdminPlateSaleDashboard() {
     });
   };
 
-  const handleDeleteOrder = async (id: string) => {
-    await deleteDoc(doc(db, "orders", id));
-    if (editingOrderId === id) resetForm();
+  // Delete with Confirmation Prompt
+  const handleDeleteOrder = async (order: Order) => {
+    const confirmed = window.confirm(
+      `Are you sure you want to delete ${order.name}'s order?`
+    );
+    if (!confirmed) return;
+
+    await deleteDoc(doc(db, "orders", order.id));
+    if (editingOrderId === order.id) resetForm();
   };
 
+  // Menu Management & Sold Out Toggle
   const handleAddMenuItem = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newItemName.trim()) return;
@@ -434,20 +484,37 @@ export default function AdminPlateSaleDashboard() {
   };
 
   const handleRemoveMenuItem = async (
-    category: keyof MenuData,
+    category: "meats" | "sides" | "breads" | "drinks" | "desserts",
     itemToRemove: string
   ) => {
     const updated: MenuData = {
       ...menu,
       [category]: menu[category].filter((item) => item !== itemToRemove),
+      soldOut: (menu.soldOut || []).filter((item) => item !== itemToRemove),
     };
     await setDoc(doc(db, "settings", "menu"), updated);
   };
 
+  const handleToggleSoldOut = async (item: string) => {
+    const currentSoldOut = menu.soldOut || [];
+    const nextSoldOut = currentSoldOut.includes(item)
+      ? currentSoldOut.filter((i) => i !== item)
+      : [...currentSoldOut, item];
+
+    await setDoc(doc(db, "settings", "menu"), {
+      ...menu,
+      soldOut: nextSoldOut,
+    });
+  };
+
+  // Stats & Payment Breakdown
   const stats = useMemo(() => {
     let totalPlates = 0;
     let totalRevenue = 0;
     let collectedRevenue = 0;
+    let cashTotal = 0;
+    let cashAppTotal = 0;
+    let zelleTotal = 0;
     let pendingPickupPlates = 0;
 
     let unpaidCount = 0;
@@ -463,7 +530,13 @@ export default function AdminPlateSaleDashboard() {
 
       totalPlates += o.qty;
       totalRevenue += price;
-      if (isPaid) collectedRevenue += price;
+      if (isPaid) {
+        collectedRevenue += price;
+        const method = o.paymentMethod || "Cash";
+        if (method === "Cash App") cashAppTotal += price;
+        else if (method === "Zelle") zelleTotal += price;
+        else cashTotal += price;
+      }
       if (!isPickedUp) pendingPickupPlates += o.qty;
 
       if (!isPaid) unpaidCount += 1;
@@ -476,6 +549,9 @@ export default function AdminPlateSaleDashboard() {
       totalPlates,
       totalRevenue,
       collectedRevenue,
+      cashTotal,
+      cashAppTotal,
+      zelleTotal,
       pendingPickupPlates,
       unpaidCount,
       pendingCount,
@@ -562,19 +638,29 @@ export default function AdminPlateSaleDashboard() {
   }, [orders, searchQuery, filterStatus, sortBy]);
 
   const handleCopyPromo = () => {
+    const available = (items: string[]) =>
+      items.filter((i) => !soldOutList.includes(i));
+
     const text = `🍽️ ${saleInfo.title.toUpperCase()} 🍽️
-📅 ${saleInfo.dateTime}
 📍 ${saleInfo.location}
 
 💲 PRICING:
 • Full Plate ($15): 1 Meat, 2 Sides, Bread, Dessert & Drink
 • 1-Side / Veggie Plate ($12): 1 Meat + 1 Side OR 3-Side Veggie Plate
 
-🍖 MEATS: ${menu.meats.filter((m) => !m.includes("None")).join(", ")}
-🥗 SIDES: ${menu.sides.join(", ")}
-🥖 BREAD: ${menu.breads.filter((b) => !b.includes("No")).join(", ")}
-🍰 DESSERTS: ${menu.desserts.filter((d) => !d.includes("No")).join(", ")}
-🥤 DRINKS: ${menu.drinks.filter((d) => !d.includes("No")).join(", ")}
+🍖 MEATS: ${available(menu.meats)
+      .filter((m) => !m.includes("None"))
+      .join(", ")}
+🥗 SIDES: ${available(menu.sides).join(", ")}
+🥖 BREAD: ${available(menu.breads)
+      .filter((b) => !b.includes("No"))
+      .join(", ")}
+🍰 DESSERTS: ${available(menu.desserts)
+      .filter((d) => !d.includes("No"))
+      .join(", ")}
+🥤 DRINKS: ${available(menu.drinks)
+      .filter((d) => !d.includes("No"))
+      .join(", ")}
 
 💵 ${saleInfo.paymentMethods}
 📞 ${saleInfo.contact}`;
@@ -596,6 +682,7 @@ export default function AdminPlateSaleDashboard() {
       "Qty",
       "Total ($)",
       "Paid",
+      "Payment Method",
       "Picked Up",
       "Notes",
     ];
@@ -610,6 +697,7 @@ export default function AdminPlateSaleDashboard() {
       o.qty,
       (o.tier === "full" ? 15 : 12) * o.qty,
       o.paid ? "Yes" : "No",
+      o.paid ? o.paymentMethod || "Cash" : "",
       o.pickedUp ? "Yes" : "No",
       `"${o.notes}"`,
     ]);
@@ -631,15 +719,8 @@ export default function AdminPlateSaleDashboard() {
             <div className="flex flex-wrap items-center gap-2.5">
               <Utensils className="w-6 h-6 text-amber-300" />
               <h1 className="text-2xl font-bold tracking-tight">{saleInfo.title}</h1>
-              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-emerald-800/80 text-emerald-200 border border-emerald-600/40">
-                {user ? <Wifi className="w-3 h-3" /> : <WifiOff className="w-3 h-3" />}
-                {user ? "Live Synced" : "Connecting..."}
-              </span>
             </div>
             <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs sm:text-sm text-amber-200">
-              <span className="flex items-center gap-1">
-                <Calendar className="w-3.5 h-3.5" /> {saleInfo.dateTime}
-              </span>
               <span className="flex items-center gap-1">
                 <MapPin className="w-3.5 h-3.5" /> {saleInfo.location}
               </span>
@@ -706,14 +787,15 @@ export default function AdminPlateSaleDashboard() {
 
           <div className="bg-white p-4 rounded-xl border border-stone-200 shadow-sm">
             <div className="flex items-center justify-between text-stone-500 text-xs font-medium uppercase">
-              <span>Cash Collected</span>
+              <span>Collected</span>
               <CheckCircle2 className="w-4 h-4 text-emerald-600" />
             </div>
             <p className="mt-1.5 text-2xl font-bold text-emerald-700">
               ${stats.collectedRevenue.toFixed(2)}
             </p>
-            <p className="text-xs text-stone-500 mt-0.5">
-              ${(stats.totalRevenue - stats.collectedRevenue).toFixed(2)} unpaid
+            <p className="text-[11px] text-stone-500 mt-0.5">
+              Cash ${stats.cashTotal} • Cash App ${stats.cashAppTotal} • Zelle $
+              {stats.zelleTotal}
             </p>
           </div>
 
@@ -858,20 +940,26 @@ export default function AdminPlateSaleDashboard() {
                   Meat Choice
                 </label>
                 <div className="flex flex-wrap gap-1.5">
-                  {menu.meats.map((meat) => (
-                    <button
-                      type="button"
-                      key={meat}
-                      onClick={() => setSelectedMeat(meat)}
-                      className={`px-3.5 py-1.5 rounded-full text-xs font-semibold border transition cursor-pointer ${
-                        selectedMeat === meat
-                          ? "bg-red-700 text-white border-red-700 shadow-xs"
-                          : "bg-red-50/70 text-red-900 border-red-200 hover:bg-red-100"
-                      }`}
-                    >
-                      {meat}
-                    </button>
-                  ))}
+                  {menu.meats.map((meat) => {
+                    const isOut = soldOutList.includes(meat);
+                    return (
+                      <button
+                        type="button"
+                        key={meat}
+                        disabled={isOut}
+                        onClick={() => setSelectedMeat(meat)}
+                        className={`px-3.5 py-1.5 rounded-full text-xs font-semibold border transition ${
+                          isOut
+                            ? "bg-stone-100 text-stone-400 border-stone-200 line-through cursor-not-allowed"
+                            : selectedMeat === meat
+                            ? "bg-red-700 text-white border-red-700 shadow-xs cursor-pointer"
+                            : "bg-red-50/70 text-red-900 border-red-200 hover:bg-red-100 cursor-pointer"
+                        }`}
+                      >
+                        {meat} {isOut ? "(Sold Out)" : ""}
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
 
@@ -889,18 +977,22 @@ export default function AdminPlateSaleDashboard() {
                 <div className="flex flex-wrap gap-1.5">
                   {menu.sides.map((side) => {
                     const active = selectedSides.includes(side);
+                    const isOut = soldOutList.includes(side);
                     return (
                       <button
                         type="button"
                         key={side}
+                        disabled={isOut}
                         onClick={() => handleToggleSide(side)}
-                        className={`px-3.5 py-1.5 rounded-full text-xs font-semibold border transition cursor-pointer ${
-                          active
-                            ? "bg-emerald-700 text-white border-emerald-700 shadow-xs"
-                            : "bg-emerald-50/70 text-emerald-900 border-emerald-200 hover:bg-emerald-100"
+                        className={`px-3.5 py-1.5 rounded-full text-xs font-semibold border transition ${
+                          isOut
+                            ? "bg-stone-100 text-stone-400 border-stone-200 line-through cursor-not-allowed"
+                            : active
+                            ? "bg-emerald-700 text-white border-emerald-700 shadow-xs cursor-pointer"
+                            : "bg-emerald-50/70 text-emerald-900 border-emerald-200 hover:bg-emerald-100 cursor-pointer"
                         }`}
                       >
-                        {active ? `✓ ${side}` : side}
+                        {isOut ? `${side} (Sold Out)` : active ? `✓ ${side}` : side}
                       </button>
                     );
                   })}
@@ -914,20 +1006,26 @@ export default function AdminPlateSaleDashboard() {
                     Bread
                   </label>
                   <div className="flex flex-wrap gap-1.5">
-                    {menu.breads.map((b) => (
-                      <button
-                        type="button"
-                        key={b}
-                        onClick={() => setSelectedBread(b)}
-                        className={`px-3.5 py-1.5 rounded-full text-xs font-semibold border transition cursor-pointer ${
-                          selectedBread === b
-                            ? "bg-orange-600 text-white border-orange-600 shadow-xs"
-                            : "bg-orange-50/70 text-orange-900 border-orange-200 hover:bg-orange-100"
-                        }`}
-                      >
-                        {b}
-                      </button>
-                    ))}
+                    {menu.breads.map((b) => {
+                      const isOut = soldOutList.includes(b);
+                      return (
+                        <button
+                          type="button"
+                          key={b}
+                          disabled={isOut}
+                          onClick={() => setSelectedBread(b)}
+                          className={`px-3.5 py-1.5 rounded-full text-xs font-semibold border transition ${
+                            isOut
+                              ? "bg-stone-100 text-stone-400 border-stone-200 line-through cursor-not-allowed"
+                              : selectedBread === b
+                              ? "bg-orange-600 text-white border-orange-600 shadow-xs cursor-pointer"
+                              : "bg-orange-50/70 text-orange-900 border-orange-200 hover:bg-orange-100 cursor-pointer"
+                          }`}
+                        >
+                          {b} {isOut ? "(Sold Out)" : ""}
+                        </button>
+                      );
+                    })}
                   </div>
                 </div>
 
@@ -938,20 +1036,26 @@ export default function AdminPlateSaleDashboard() {
                         Drink
                       </label>
                       <div className="flex flex-wrap gap-1.5">
-                        {menu.drinks.map((dr) => (
-                          <button
-                            type="button"
-                            key={dr}
-                            onClick={() => setSelectedDrink(dr)}
-                            className={`px-3.5 py-1.5 rounded-full text-xs font-semibold border transition cursor-pointer ${
-                              selectedDrink === dr
-                                ? "bg-blue-700 text-white border-blue-700 shadow-xs"
-                                : "bg-blue-50/70 text-blue-900 border-blue-200 hover:bg-blue-100"
-                            }`}
-                          >
-                            {dr}
-                          </button>
-                        ))}
+                        {menu.drinks.map((dr) => {
+                          const isOut = soldOutList.includes(dr);
+                          return (
+                            <button
+                              type="button"
+                              key={dr}
+                              disabled={isOut}
+                              onClick={() => setSelectedDrink(dr)}
+                              className={`px-3.5 py-1.5 rounded-full text-xs font-semibold border transition ${
+                                isOut
+                                  ? "bg-stone-100 text-stone-400 border-stone-200 line-through cursor-not-allowed"
+                                  : selectedDrink === dr
+                                  ? "bg-blue-700 text-white border-blue-700 shadow-xs cursor-pointer"
+                                  : "bg-blue-50/70 text-blue-900 border-blue-200 hover:bg-blue-100 cursor-pointer"
+                              }`}
+                            >
+                              {dr} {isOut ? "(Sold Out)" : ""}
+                            </button>
+                          );
+                        })}
                       </div>
                     </div>
 
@@ -960,20 +1064,26 @@ export default function AdminPlateSaleDashboard() {
                         Dessert
                       </label>
                       <div className="flex flex-wrap gap-1.5">
-                        {menu.desserts.map((d) => (
-                          <button
-                            type="button"
-                            key={d}
-                            onClick={() => setSelectedDessert(d)}
-                            className={`px-3.5 py-1.5 rounded-full text-xs font-semibold border transition cursor-pointer ${
-                              selectedDessert === d
-                                ? "bg-purple-700 text-white border-purple-700 shadow-xs"
-                                : "bg-purple-50/70 text-purple-900 border-purple-200 hover:bg-purple-100"
-                            }`}
-                          >
-                            {d}
-                          </button>
-                        ))}
+                        {menu.desserts.map((d) => {
+                          const isOut = soldOutList.includes(d);
+                          return (
+                            <button
+                              type="button"
+                              key={d}
+                              disabled={isOut}
+                              onClick={() => setSelectedDessert(d)}
+                              className={`px-3.5 py-1.5 rounded-full text-xs font-semibold border transition ${
+                                isOut
+                                  ? "bg-stone-100 text-stone-400 border-stone-200 line-through cursor-not-allowed"
+                                  : selectedDessert === d
+                                  ? "bg-purple-700 text-white border-purple-700 shadow-xs cursor-pointer"
+                                  : "bg-purple-50/70 text-purple-900 border-purple-200 hover:bg-purple-100 cursor-pointer"
+                              }`}
+                            >
+                              {d} {isOut ? "(Sold Out)" : ""}
+                            </button>
+                          );
+                        })}
                       </div>
                     </div>
                   </>
@@ -1023,23 +1133,48 @@ export default function AdminPlateSaleDashboard() {
                 </div>
               </div>
 
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              {/* Notes & Payment Tagging */}
+              <div className="space-y-2.5">
                 <input
                   type="text"
                   placeholder="Optional notes (e.g., extra gravy, 2pm pickup)"
                   value={notes}
                   onChange={(e) => setNotes(e.target.value)}
-                  className="flex-1 px-3 py-2 rounded-lg border border-stone-300 text-xs"
+                  className="w-full px-3 py-2 rounded-lg border border-stone-300 text-xs"
                 />
-                <label className="inline-flex items-center gap-2 text-xs font-semibold text-stone-700 cursor-pointer select-none">
-                  <input
-                    type="checkbox"
-                    checked={paid}
-                    onChange={(e) => setPaid(e.target.checked)}
-                    className="w-4 h-4 rounded text-emerald-600"
-                  />
-                  Already Paid
-                </label>
+
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <label className="inline-flex items-center gap-2 text-xs font-semibold text-stone-700 cursor-pointer select-none">
+                    <input
+                      type="checkbox"
+                      checked={paid}
+                      onChange={(e) => setPaid(e.target.checked)}
+                      className="w-4 h-4 rounded text-emerald-600"
+                    />
+                    Already Paid
+                  </label>
+
+                  {paid && (
+                    <div className="flex items-center gap-1">
+                      {(["Cash", "Cash App", "Zelle"] as PaymentMethod[]).map(
+                        (method) => (
+                          <button
+                            type="button"
+                            key={method}
+                            onClick={() => setPaymentMethod(method)}
+                            className={`px-2.5 py-1 rounded-full text-[11px] font-bold transition cursor-pointer ${
+                              paymentMethod === method
+                                ? "bg-emerald-600 text-white"
+                                : "bg-stone-100 text-stone-600 hover:bg-stone-200"
+                            }`}
+                          >
+                            {method}
+                          </button>
+                        )
+                      )}
+                    </div>
+                  )}
+                </div>
               </div>
 
               <button
@@ -1158,7 +1293,7 @@ export default function AdminPlateSaleDashboard() {
 
               {loading ? (
                 <div className="bg-white p-8 rounded-2xl border border-stone-200 text-center text-sm text-stone-500">
-                  Syncing live orders...
+                  Loading orders...
                 </div>
               ) : displayedOrders.length === 0 ? (
                 <div className="bg-white p-8 rounded-2xl border border-stone-200 text-center text-sm text-stone-500">
@@ -1261,8 +1396,9 @@ export default function AdminPlateSaleDashboard() {
                           </div>
                         </div>
 
+                        {/* QUICK ACTION PILLS & PAYMENT METHOD TAGGING */}
                         <div className="mt-3 pt-3 border-t border-stone-100 flex flex-wrap items-center justify-between gap-2">
-                          <div className="flex items-center gap-2">
+                          <div className="flex flex-wrap items-center gap-1.5">
                             <button
                               type="button"
                               onClick={() => togglePaid(order)}
@@ -1277,8 +1413,35 @@ export default function AdminPlateSaleDashboard() {
                                   order.paid ? "bg-white" : "bg-stone-400"
                                 }`}
                               />
-                              {order.paid ? "Paid" : "Mark Paid"}
+                              {order.paid
+                                ? `Paid (${order.paymentMethod || "Cash"})`
+                                : "Mark Paid"}
                             </button>
+
+                            {/* Payment Method Tag Pills */}
+                            {(
+                              ["Cash", "Cash App", "Zelle"] as PaymentMethod[]
+                            ).map((method) => {
+                              const activeMethod =
+                                order.paid &&
+                                (order.paymentMethod || "Cash") === method;
+                              return (
+                                <button
+                                  type="button"
+                                  key={method}
+                                  onClick={() =>
+                                    handleSetPaymentMethod(order, method)
+                                  }
+                                  className={`px-2 py-0.5 rounded-full text-[11px] font-semibold transition cursor-pointer ${
+                                    activeMethod
+                                      ? "bg-emerald-100 text-emerald-900 border border-emerald-400"
+                                      : "bg-stone-50 text-stone-500 border border-stone-200 hover:bg-stone-100"
+                                  }`}
+                                >
+                                  {method}
+                                </button>
+                              );
+                            })}
 
                             <button
                               type="button"
@@ -1309,7 +1472,7 @@ export default function AdminPlateSaleDashboard() {
                             </button>
                             <button
                               type="button"
-                              onClick={() => handleDeleteOrder(order.id)}
+                              onClick={() => handleDeleteOrder(order)}
                               className="p-1.5 rounded-lg text-stone-500 hover:text-red-700 hover:bg-red-50 transition cursor-pointer"
                               title="Delete Order"
                             >
@@ -1361,7 +1524,7 @@ export default function AdminPlateSaleDashboard() {
           </div>
         )}
 
-        {/* TAB 3: MENU & OFFERINGS EDITOR (COLOR-CODED) */}
+        {/* TAB 3: MENU & OFFERINGS EDITOR (COLOR-CODED + SOLD OUT TOGGLE) */}
         {activeTab === "menu" && (
           <div className="space-y-6">
             <form
@@ -1371,7 +1534,14 @@ export default function AdminPlateSaleDashboard() {
               <select
                 value={newItemCategory}
                 onChange={(e) =>
-                  setNewItemCategory(e.target.value as keyof MenuData)
+                  setNewItemCategory(
+                    e.target.value as
+                      | "meats"
+                      | "sides"
+                      | "breads"
+                      | "drinks"
+                      | "desserts"
+                  )
                 }
                 className="px-3 py-2 rounded-lg border border-stone-300 text-sm bg-white font-medium"
               >
@@ -1395,6 +1565,12 @@ export default function AdminPlateSaleDashboard() {
                 Add to Menu
               </button>
             </form>
+
+            <p className="text-xs text-stone-500">
+              Tip: Click the <span className="font-semibold">Sold Out</span>{" "}
+              badge on any item to disable it in the order form without deleting
+              it.
+            </p>
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {(
@@ -1449,22 +1625,46 @@ export default function AdminPlateSaleDashboard() {
                     {label}
                   </h3>
                   <div className="flex flex-wrap gap-2">
-                    {menu[key].map((item) => (
-                      <span
-                        key={item}
-                        className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold border ${pill}`}
-                      >
-                        {item}
-                        <button
-                          type="button"
-                          onClick={() => handleRemoveMenuItem(key, item)}
-                          className={`font-bold cursor-pointer ${close}`}
-                          title="Remove"
+                    {menu[key].map((item) => {
+                      const isOut = soldOutList.includes(item);
+                      return (
+                        <span
+                          key={item}
+                          className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold border ${
+                            isOut
+                              ? "bg-stone-200 text-stone-600 border-stone-300"
+                              : pill
+                          }`}
                         >
-                          ×
-                        </button>
-                      </span>
-                    ))}
+                          <span className={isOut ? "line-through" : ""}>
+                            {item}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => handleToggleSoldOut(item)}
+                            className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[10px] font-bold cursor-pointer ${
+                              isOut
+                                ? "bg-rose-600 text-white"
+                                : "bg-white/80 text-stone-700 hover:bg-white"
+                            }`}
+                            title={
+                              isOut ? "Mark Back in Stock" : "Mark Sold Out"
+                            }
+                          >
+                            <Ban className="w-2.5 h-2.5" />
+                            {isOut ? "Sold Out" : "In Stock"}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveMenuItem(key, item)}
+                            className={`font-bold cursor-pointer ${close}`}
+                            title="Delete Item"
+                          >
+                            ×
+                          </button>
+                        </span>
+                      );
+                    })}
                   </div>
                 </div>
               ))}
@@ -1490,19 +1690,6 @@ export default function AdminPlateSaleDashboard() {
                   value={saleInfo.title}
                   onChange={(e) =>
                     setSaleInfo({ ...saleInfo, title: e.target.value })
-                  }
-                  className="w-full px-3 py-2 rounded-lg border border-stone-300"
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-semibold text-stone-600 mb-1">
-                  Date & Hours
-                </label>
-                <input
-                  type="text"
-                  value={saleInfo.dateTime}
-                  onChange={(e) =>
-                    setSaleInfo({ ...saleInfo, dateTime: e.target.value })
                   }
                   className="w-full px-3 py-2 rounded-lg border border-stone-300"
                 />

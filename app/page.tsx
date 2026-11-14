@@ -18,13 +18,10 @@ import {
 } from "firebase/firestore";
 import {
   Utensils,
-  Calendar,
   MapPin,
   DollarSign,
   ClipboardList,
   ArrowRight,
-  Wifi,
-  WifiOff,
   Users,
   Clock,
 } from "lucide-react";
@@ -58,6 +55,7 @@ interface MenuData {
   breads: string[];
   desserts: string[];
   drinks: string[];
+  soldOut?: string[];
 }
 
 interface SaleInfo {
@@ -82,11 +80,12 @@ const DEFAULT_MENU: MenuData = {
   breads: ["Roll", "Cornbread", "No Bread"],
   desserts: ["Chef's Choice", "Cake Slice", "No Dessert"],
   drinks: ["Bottled Water", "Soda", "No Drink"],
+  soldOut: [],
 };
 
 const DEFAULT_SALE_INFO: SaleInfo = {
   title: "LOV Plate Sale",
-  dateTime: "Saturday • Starting at 12:00 PM until Sold Out",
+  dateTime: "",
   location: "Pickup Only",
   contact: "Text or Call to Confirm Orders",
   paymentMethods: "Cash • Cash App • Zelle",
@@ -126,12 +125,14 @@ export default function TeamPlateSaleHome() {
         const needsLocationUpdate = info.location?.toLowerCase().includes("delivery");
         const needsTitleUpdate =
           info.title === "LOV, Plate Sale" || info.title === "Family Plate Sale";
+        const needsDateRemoval = info.dateTime?.includes("Saturday");
 
-        if (needsLocationUpdate || needsTitleUpdate) {
-          const updated = {
+        if (needsLocationUpdate || needsTitleUpdate || needsDateRemoval) {
+          const updated: SaleInfo = {
             ...info,
             title: needsTitleUpdate ? "LOV Plate Sale" : info.title,
             location: needsLocationUpdate ? "Pickup Only" : info.location,
+            dateTime: needsDateRemoval ? "" : info.dateTime,
           };
           await setDoc(doc(db, "settings", "saleInfo"), updated);
           setSaleInfo(updated);
@@ -157,19 +158,16 @@ export default function TeamPlateSaleHome() {
     (acc, o) => acc + (o.tier === "full" ? 15 : 12) * (o.qty || 1),
     0
   );
+  const soldOutList = menu.soldOut || [];
 
   return (
     <div className="min-h-screen bg-stone-50 text-stone-900 pb-16">
       {/* TOP BAR */}
       <nav className="bg-amber-950 text-amber-100 border-b border-amber-900/60">
         <div className="max-w-5xl mx-auto px-4 py-3 flex items-center justify-between">
-          <div className="flex items-center gap-2.5 font-bold text-sm tracking-wide">
+          <div className="flex items-center gap-2 font-bold text-sm tracking-wide">
             <Utensils className="w-4 h-4 text-amber-400" />
             <span>{saleInfo.title}</span>
-            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium bg-emerald-900/80 text-emerald-200 border border-emerald-600/40">
-              {user ? <Wifi className="w-3 h-3" /> : <WifiOff className="w-3 h-3" />}
-              {user ? "Live" : "Syncing"}
-            </span>
           </div>
 
           <Link
@@ -181,21 +179,14 @@ export default function TeamPlateSaleHome() {
         </div>
       </nav>
 
-      {/* COMPACT TEAM OVERVIEW HERO */}
+      {/* COMPACT HERO */}
       <header className="bg-gradient-to-br from-amber-900 via-amber-800 to-stone-900 text-amber-50">
         <div className="max-w-5xl mx-auto px-4 py-10 sm:py-12 text-center space-y-4">
-          <p className="text-xs font-bold uppercase tracking-widest text-amber-300">
-            Ladies of the Vineyard • Team Sale Hub
-          </p>
-
           <h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight text-white">
             {saleInfo.title}
           </h1>
 
           <div className="pt-1 flex flex-wrap items-center justify-center gap-2.5 text-xs sm:text-sm text-amber-100">
-            <span className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-white/10">
-              <Calendar className="w-4 h-4 text-amber-300" /> {saleInfo.dateTime}
-            </span>
             <span className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-white/10">
               <MapPin className="w-4 h-4 text-amber-300" /> {saleInfo.location}
             </span>
@@ -217,7 +208,7 @@ export default function TeamPlateSaleHome() {
       </header>
 
       <main className="max-w-5xl mx-auto px-4 -mt-5 space-y-6">
-        {/* LIVE SNAPSHOT CARDS */}
+        {/* SNAPSHOT CARDS */}
         <section className="grid grid-cols-3 gap-3 sm:gap-4">
           <div className="bg-white p-4 rounded-2xl border border-stone-200 shadow-sm text-center">
             <div className="flex items-center justify-center gap-1 text-xs font-semibold uppercase text-stone-500">
@@ -312,14 +303,21 @@ export default function TeamPlateSaleHome() {
                 Meats
               </h3>
               <div className="flex flex-wrap gap-1.5">
-                {menu.meats.map((item) => (
-                  <span
-                    key={item}
-                    className="px-2.5 py-1 rounded-full text-xs font-semibold bg-red-100 text-red-900"
-                  >
-                    {item}
-                  </span>
-                ))}
+                {menu.meats.map((item) => {
+                  const isOut = soldOutList.includes(item);
+                  return (
+                    <span
+                      key={item}
+                      className={`px-2.5 py-1 rounded-full text-xs font-semibold ${
+                        isOut
+                          ? "bg-stone-200 text-stone-500 line-through"
+                          : "bg-red-100 text-red-900"
+                      }`}
+                    >
+                      {item} {isOut ? "(Sold Out)" : ""}
+                    </span>
+                  );
+                })}
               </div>
             </div>
 
@@ -329,14 +327,21 @@ export default function TeamPlateSaleHome() {
                 Sides
               </h3>
               <div className="flex flex-wrap gap-1.5">
-                {menu.sides.map((item) => (
-                  <span
-                    key={item}
-                    className="px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-900"
-                  >
-                    {item}
-                  </span>
-                ))}
+                {menu.sides.map((item) => {
+                  const isOut = soldOutList.includes(item);
+                  return (
+                    <span
+                      key={item}
+                      className={`px-2.5 py-1 rounded-full text-xs font-semibold ${
+                        isOut
+                          ? "bg-stone-200 text-stone-500 line-through"
+                          : "bg-emerald-100 text-emerald-900"
+                      }`}
+                    >
+                      {item} {isOut ? "(Sold Out)" : ""}
+                    </span>
+                  );
+                })}
               </div>
             </div>
 
@@ -346,14 +351,21 @@ export default function TeamPlateSaleHome() {
                 Bread
               </h3>
               <div className="flex flex-wrap gap-1.5">
-                {menu.breads.map((item) => (
-                  <span
-                    key={item}
-                    className="px-2.5 py-1 rounded-full text-xs font-semibold bg-orange-100 text-orange-900"
-                  >
-                    {item}
-                  </span>
-                ))}
+                {menu.breads.map((item) => {
+                  const isOut = soldOutList.includes(item);
+                  return (
+                    <span
+                      key={item}
+                      className={`px-2.5 py-1 rounded-full text-xs font-semibold ${
+                        isOut
+                          ? "bg-stone-200 text-stone-500 line-through"
+                          : "bg-orange-100 text-orange-900"
+                      }`}
+                    >
+                      {item} {isOut ? "(Sold Out)" : ""}
+                    </span>
+                  );
+                })}
               </div>
             </div>
 
@@ -363,14 +375,21 @@ export default function TeamPlateSaleHome() {
                 Drinks
               </h3>
               <div className="flex flex-wrap gap-1.5">
-                {menu.drinks.map((item) => (
-                  <span
-                    key={item}
-                    className="px-2.5 py-1 rounded-full text-xs font-semibold bg-blue-100 text-blue-900"
-                  >
-                    {item}
-                  </span>
-                ))}
+                {menu.drinks.map((item) => {
+                  const isOut = soldOutList.includes(item);
+                  return (
+                    <span
+                      key={item}
+                      className={`px-2.5 py-1 rounded-full text-xs font-semibold ${
+                        isOut
+                          ? "bg-stone-200 text-stone-500 line-through"
+                          : "bg-blue-100 text-blue-900"
+                      }`}
+                    >
+                      {item} {isOut ? "(Sold Out)" : ""}
+                    </span>
+                  );
+                })}
               </div>
             </div>
 
@@ -380,14 +399,21 @@ export default function TeamPlateSaleHome() {
                 Desserts
               </h3>
               <div className="flex flex-wrap gap-1.5">
-                {menu.desserts.map((item) => (
-                  <span
-                    key={item}
-                    className="px-2.5 py-1 rounded-full text-xs font-semibold bg-purple-100 text-purple-900"
-                  >
-                    {item}
-                  </span>
-                ))}
+                {menu.desserts.map((item) => {
+                  const isOut = soldOutList.includes(item);
+                  return (
+                    <span
+                      key={item}
+                      className={`px-2.5 py-1 rounded-full text-xs font-semibold ${
+                        isOut
+                          ? "bg-stone-200 text-stone-500 line-through"
+                          : "bg-purple-100 text-purple-900"
+                      }`}
+                    >
+                      {item} {isOut ? "(Sold Out)" : ""}
+                    </span>
+                  );
+                })}
               </div>
             </div>
           </div>
