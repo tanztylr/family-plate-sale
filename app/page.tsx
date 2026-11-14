@@ -11,7 +11,6 @@ import {
 } from "firebase/auth";
 import {
   getFirestore,
-  collection,
   doc,
   onSnapshot,
   setDoc,
@@ -22,8 +21,6 @@ import {
   DollarSign,
   ClipboardList,
   ArrowRight,
-  Users,
-  Clock,
 } from "lucide-react";
 
 // --- FIREBASE INITIALIZATION ---
@@ -41,14 +38,6 @@ const auth = getAuth(app);
 const db = getFirestore(app);
 
 // --- TYPES ---
-interface Order {
-  id: string;
-  tier: "full" | "small";
-  qty: number;
-  paid: boolean;
-  pickedUp: boolean;
-}
-
 interface MenuData {
   meats: string[];
   sides: string[];
@@ -96,7 +85,6 @@ export default function TeamPlateSaleHome() {
   const [user, setUser] = useState<User | null>(null);
   const [menu, setMenu] = useState<MenuData>(DEFAULT_MENU);
   const [saleInfo, setSaleInfo] = useState<SaleInfo>(DEFAULT_SALE_INFO);
-  const [orders, setOrders] = useState<Order[]>([]);
 
   useEffect(() => {
     signInAnonymously(auth).catch((err) => console.error("Auth error:", err));
@@ -106,12 +94,6 @@ export default function TeamPlateSaleHome() {
 
   useEffect(() => {
     if (!user) return;
-
-    const unsubOrders = onSnapshot(collection(db, "orders"), (snap) => {
-      const list: Order[] = [];
-      snap.forEach((d) => list.push(d.data() as Order));
-      setOrders(list);
-    });
 
     const unsubMenu = onSnapshot(doc(db, "settings", "menu"), (snap) => {
       if (snap.exists()) {
@@ -143,21 +125,11 @@ export default function TeamPlateSaleHome() {
     });
 
     return () => {
-      unsubOrders();
       unsubMenu();
       unsubInfo();
     };
   }, [user]);
 
-  const totalPlates = orders.reduce((acc, o) => acc + (o.qty || 1), 0);
-  const toPackCount = orders.reduce(
-    (acc, o) => (!o.pickedUp ? acc + (o.qty || 1) : acc),
-    0
-  );
-  const totalExpected = orders.reduce(
-    (acc, o) => acc + (o.tier === "full" ? 15 : 12) * (o.qty || 1),
-    0
-  );
   const soldOutList = menu.soldOut || [];
 
   return (
@@ -219,37 +191,7 @@ export default function TeamPlateSaleHome() {
         </div>
       </header>
 
-      <main className="max-w-5xl mx-auto px-4 -mt-5 space-y-6">
-        {/* SNAPSHOT CARDS */}
-        <section className="grid grid-cols-3 gap-3 sm:gap-4">
-          <div className="bg-white p-4 rounded-2xl border border-stone-200 shadow-sm text-center">
-            <div className="flex items-center justify-center gap-1 text-xs font-semibold uppercase text-stone-500">
-              <Users className="w-3.5 h-3.5 text-rose-700" /> Total Plates
-            </div>
-            <p className="mt-1 text-2xl font-extrabold text-stone-900">
-              {totalPlates}
-            </p>
-          </div>
-
-          <div className="bg-white p-4 rounded-2xl border border-stone-200 shadow-sm text-center">
-            <div className="flex items-center justify-center gap-1 text-xs font-semibold uppercase text-stone-500">
-              <Clock className="w-3.5 h-3.5 text-amber-600" /> To Pack
-            </div>
-            <p className="mt-1 text-2xl font-extrabold text-amber-700">
-              {toPackCount}
-            </p>
-          </div>
-
-          <div className="bg-white p-4 rounded-2xl border border-stone-200 shadow-sm text-center">
-            <div className="flex items-center justify-center gap-1 text-xs font-semibold uppercase text-stone-500">
-              <DollarSign className="w-3.5 h-3.5 text-emerald-600" /> Expected
-            </div>
-            <p className="mt-1 text-2xl font-extrabold text-emerald-700">
-              ${totalExpected.toFixed(2)}
-            </p>
-          </div>
-        </section>
-
+      <main className="max-w-5xl mx-auto px-4 mt-8 space-y-6">
         {/* PLATE PRICING REFERENCE */}
         <section className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div className="bg-white p-5 rounded-2xl border-2 border-rose-900/20 shadow-sm">
