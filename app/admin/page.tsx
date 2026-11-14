@@ -263,7 +263,7 @@ export default function AdminPlateSaleDashboard() {
   const [qty, setQty] = useState(1);
   const [notes, setNotes] = useState("");
   const [paid, setPaid] = useState(false);
-  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("Cash");
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod | "">("");
 
   // Menu Editor State
   const [newItemCategory, setNewItemCategory] = useState<
@@ -481,12 +481,26 @@ export default function AdminPlateSaleDashboard() {
     }
   };
 
-  const handleSaveOrder = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!customerName.trim()) return;
+  
+const handleSaveOrder = async (e: React.FormEvent) => {
+  e.preventDefault();
 
+  if (!customerName.trim()) {
+    alert("Please enter a customer name.");
+    return;
+  }
+
+  if (paid && !paymentMethod) {
+    alert("Please select a payment method for this paid order.");
+    return;
+  }
+
+  try {
     const id = editingOrderId || `order-${Date.now()}`;
     const existing = orders.find((o) => o.id === editingOrderId);
+
+    const paymentMethodToSave: PaymentMethod | undefined =
+      paid && paymentMethod ? paymentMethod : undefined;
 
     const orderPayload: Order = {
       id,
@@ -508,15 +522,32 @@ export default function AdminPlateSaleDashboard() {
       qty: Math.max(1, qty),
       notes: notes.trim(),
       paid,
-      paymentMethod: paid ? paymentMethod : undefined,
+      ...(paymentMethodToSave
+        ? { paymentMethod: paymentMethodToSave }
+        : {}),
       pickedUp: existing ? Boolean(existing.pickedUp) : false,
       incomplete: !selectedMeat || selectedSides.length === 0,
       createdAt: existing ? existing.createdAt : Date.now(),
     };
 
+    console.log("Attempting to save order:", orderPayload);
+
     await setDoc(doc(db, "orders", id), orderPayload);
+
+    console.log("Order successfully saved:", id);
+
+    alert("Order saved successfully!");
     resetForm();
-  };
+
+  } catch (error) {
+    console.error("ORDER SAVE FAILED:", error);
+
+    const message =
+      error instanceof Error ? error.message : String(error);
+
+    alert(`Unable to save order: ${message}`);
+  }
+};
 
   const resetForm = () => {
     setEditingOrderId(null);
@@ -547,7 +578,7 @@ export default function AdminPlateSaleDashboard() {
     setQty(1);
     setNotes("");
     setPaid(false);
-    setPaymentMethod("Cash");
+    setPaymentMethod("");
   };
 
   const handleEditOrder = (order: Order) => {
@@ -577,7 +608,7 @@ export default function AdminPlateSaleDashboard() {
     setQty(order.qty);
     setNotes(order.notes);
     setPaid(Boolean(order.paid));
-    setPaymentMethod(order.paymentMethod || "Cash");
+    setPaymentMethod(order.paymentMethod || "");
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
