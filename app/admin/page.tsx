@@ -75,6 +75,8 @@ interface Order {
   unitPrice?: number;
   tierLabel?: string;
   meat: string;
+  extraMeat?: string;
+  extraSide?: boolean;
   sides: string[];
   bread: string;
   dessert: string;
@@ -248,6 +250,9 @@ export default function AdminPlateSaleDashboard() {
   const [customerName, setCustomerName] = useState("");
   const [tier, setTier] = useState<string>("full");
   const [selectedMeat, setSelectedMeat] = useState("Ham");
+  const [hasExtraMeat, setHasExtraMeat] = useState(false);
+  const [selectedExtraMeat, setSelectedExtraMeat] = useState("Ham");
+  const [hasExtraSide, setHasExtraSide] = useState(false);
   const [selectedSides, setSelectedSides] = useState<string[]>([
     "Dressing",
     "Green Beans",
@@ -382,14 +387,28 @@ export default function AdminPlateSaleDashboard() {
     plateOptions.find((p) => p.id === tier) || plateOptions[0];
   const soldOutList = menu.soldOut || [];
 
-  const unitPrice = activeTierObj ? activeTierObj.price : 15;
+  const getMaxSidesForSelection = (
+    tierObj: PlateTierOption,
+    meatChoice: string,
+    extraSideActive: boolean
+  ) => {
+    const isVeggie = meatChoice.toLowerCase().includes("veggie");
+    const baseSides =
+      isVeggie && typeof tierObj.veggieMaxSides === "number"
+        ? tierObj.veggieMaxSides
+        : tierObj.maxSides;
+    return baseSides + (extraSideActive ? 1 : 0);
+  };
+
+  const addOnCost = (hasExtraMeat ? 1 : 0) + (hasExtraSide ? 1 : 0);
+  const unitPrice = (activeTierObj ? activeTierObj.price : 15) + addOnCost;
   const calculatedTotal = unitPrice * qty;
 
   const getOrderUnitPrice = (o: Order) => {
     if (typeof o.unitPrice === "number") return o.unitPrice;
     const found = plateOptions.find((p) => p.id === o.tier);
-    if (found) return found.price;
-    return o.tier === "full" ? 15 : 12;
+    const base = found ? found.price : o.tier === "full" ? 15 : 12;
+    return base + (o.extraMeat ? 1 : 0) + (o.extraSide ? 1 : 0);
   };
 
   const getOrderTierDisplay = (o: Order) => {
@@ -402,20 +421,13 @@ export default function AdminPlateSaleDashboard() {
     return `${label} ($${price})`;
   };
 
-  const getMaxSidesForSelection = (
-    tierObj: PlateTierOption,
-    meatChoice: string
-  ) => {
-    const isVeggie = meatChoice.toLowerCase().includes("veggie");
-    if (isVeggie && typeof tierObj.veggieMaxSides === "number") {
-      return tierObj.veggieMaxSides;
-    }
-    return tierObj.maxSides;
-  };
-
   const handleToggleSide = (side: string) => {
     if (soldOutList.includes(side)) return;
-    const maxSides = getMaxSidesForSelection(activeTierObj, selectedMeat);
+    const maxSides = getMaxSidesForSelection(
+      activeTierObj,
+      selectedMeat,
+      hasExtraSide
+    );
 
     if (selectedSides.includes(side)) {
       setSelectedSides(selectedSides.filter((s) => s !== side));
@@ -430,9 +442,42 @@ export default function AdminPlateSaleDashboard() {
     setTier(newTierId);
     const nextTier =
       plateOptions.find((p) => p.id === newTierId) || plateOptions[0];
-    const maxSides = getMaxSidesForSelection(nextTier, selectedMeat);
+    const maxSides = getMaxSidesForSelection(
+      nextTier,
+      selectedMeat,
+      hasExtraSide
+    );
     if (selectedSides.length > maxSides) {
       setSelectedSides(selectedSides.slice(0, maxSides));
+    }
+  };
+
+  const handleToggleExtraMeat = () => {
+    const next = !hasExtraMeat;
+    setHasExtraMeat(next);
+    if (next) {
+      const validMeat =
+        menu.meats.find(
+          (m) => !soldOutList.includes(m) && !m.toLowerCase().includes("none")
+        ) ||
+        menu.meats[0] ||
+        "Ham";
+      setSelectedExtraMeat(validMeat);
+    }
+  };
+
+  const handleToggleExtraSide = () => {
+    const next = !hasExtraSide;
+    setHasExtraSide(next);
+    if (!next) {
+      const maxSides = getMaxSidesForSelection(
+        activeTierObj,
+        selectedMeat,
+        false
+      );
+      if (selectedSides.length > maxSides) {
+        setSelectedSides(selectedSides.slice(0, maxSides));
+      }
     }
   };
 
@@ -447,9 +492,11 @@ export default function AdminPlateSaleDashboard() {
       id,
       name: customerName.trim(),
       tier: activeTierObj.id,
-      unitPrice: activeTierObj.price,
+      unitPrice,
       tierLabel: activeTierObj.name,
       meat: selectedMeat,
+      extraMeat: hasExtraMeat ? selectedExtraMeat : "",
+      extraSide: hasExtraSide,
       sides: selectedSides,
       bread: selectedBread,
       dessert: activeTierObj.includesExtras
@@ -475,9 +522,12 @@ export default function AdminPlateSaleDashboard() {
     setEditingOrderId(null);
     setCustomerName("");
     setTier(plateOptions[0]?.id || "full");
-    setSelectedMeat(
-      menu.meats.find((m) => !soldOutList.includes(m)) || menu.meats[0] || "Ham"
-    );
+    const defaultMeat =
+      menu.meats.find((m) => !soldOutList.includes(m)) || menu.meats[0] || "Ham";
+    setSelectedMeat(defaultMeat);
+    setHasExtraMeat(false);
+    setSelectedExtraMeat(defaultMeat);
+    setHasExtraSide(false);
     setSelectedSides(
       menu.sides.filter((s) => !soldOutList.includes(s)).slice(0, 2)
     );
@@ -509,6 +559,9 @@ export default function AdminPlateSaleDashboard() {
         : plateOptions[0]?.id || "full"
     );
     setSelectedMeat(order.meat || menu.meats[0] || "Ham");
+    setHasExtraMeat(Boolean(order.extraMeat));
+    setSelectedExtraMeat(order.extraMeat || order.meat || menu.meats[0] || "Ham");
+    setHasExtraSide(Boolean(order.extraSide));
     setSelectedSides(order.sides || []);
     setSelectedBread(order.bread || menu.breads[0] || "Roll");
     setSelectedDessert(
@@ -718,6 +771,9 @@ export default function AdminPlateSaleDashboard() {
       if (o.meat && !o.meat.toLowerCase().includes("none")) {
         counts.Meats[o.meat] = (counts.Meats[o.meat] || 0) + o.qty;
       }
+      if (o.extraMeat && !o.extraMeat.toLowerCase().includes("none")) {
+        counts.Meats[o.extraMeat] = (counts.Meats[o.extraMeat] || 0) + o.qty;
+      }
       (o.sides || []).forEach((s) => {
         counts.Sides[s] = (counts.Sides[s] || 0) + o.qty;
       });
@@ -751,6 +807,7 @@ export default function AdminPlateSaleDashboard() {
         !query ||
         o.name.toLowerCase().includes(query) ||
         (o.meat || "").toLowerCase().includes(query) ||
+        (o.extraMeat || "").toLowerCase().includes(query) ||
         (o.sides || []).join(" ").toLowerCase().includes(query);
 
       if (!matchesSearch) return false;
@@ -795,6 +852,7 @@ export default function AdminPlateSaleDashboard() {
 
 💲 PRICING:
 ${pricingLines}
+• Add-Ons: Extra Meat (+$1) • Extra Side (+$1)
 
 🍖 MEATS: ${available(menu.meats)
       .filter((m) => !m.includes("None"))
@@ -823,7 +881,9 @@ ${pricingLines}
       "Name",
       "Plate Option",
       "Meat",
+      "Extra Meat (+$1)",
       "Sides",
+      "Extra Side (+$1)",
       "Bread",
       "Dessert",
       "Drink",
@@ -838,7 +898,9 @@ ${pricingLines}
       `"${o.name}"`,
       `"${getOrderTierDisplay(o)}"`,
       `"${o.meat}"`,
+      `"${o.extraMeat || ""}"`,
       `"${(o.sides || []).join(", ")}"`,
+      o.extraSide ? "Yes" : "No",
       `"${o.bread}"`,
       `"${o.dessert}"`,
       `"${o.drink}"`,
@@ -1078,6 +1140,44 @@ ${pricingLines}
                 </div>
               </div>
 
+              {/* ADD-ONS: + EXTRA MEAT ($1) & + EXTRA SIDE ($1) */}
+              <div>
+                <label className="block text-xs font-semibold uppercase text-stone-600 mb-1.5">
+                  Optional Add-Ons (+$1 Each)
+                </label>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={handleToggleExtraMeat}
+                    className={`px-3 py-2 rounded-xl border text-xs font-bold flex items-center justify-between transition cursor-pointer ${
+                      hasExtraMeat
+                        ? "bg-red-700 text-white border-red-700 shadow-xs"
+                        : "bg-red-50/60 text-red-900 border-red-200 hover:bg-red-100"
+                    }`}
+                  >
+                    <span>
+                      {hasExtraMeat ? "✓ Extra Meat" : "+ Extra Meat"}
+                    </span>
+                    <span>+$1</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleToggleExtraSide}
+                    className={`px-3 py-2 rounded-xl border text-xs font-bold flex items-center justify-between transition cursor-pointer ${
+                      hasExtraSide
+                        ? "bg-emerald-700 text-white border-emerald-700 shadow-xs"
+                        : "bg-emerald-50/60 text-emerald-900 border-emerald-200 hover:bg-emerald-100"
+                    }`}
+                  >
+                    <span>
+                      {hasExtraSide ? "✓ Extra Side" : "+ Extra Side"}
+                    </span>
+                    <span>+$1</span>
+                  </button>
+                </div>
+              </div>
+
               {/* MEAT (RED) */}
               <div>
                 <label className="block text-xs font-bold uppercase text-red-700 mb-1">
@@ -1105,13 +1205,50 @@ ${pricingLines}
                     );
                   })}
                 </div>
+
+                {hasExtraMeat && (
+                  <div className="mt-2.5 p-2.5 rounded-xl bg-red-50/70 border border-red-200">
+                    <label className="block text-[11px] font-bold uppercase text-red-800 mb-1.5">
+                      Select Extra Meat (+$1)
+                    </label>
+                    <div className="flex flex-wrap gap-1.5">
+                      {menu.meats
+                        .filter((m) => !m.toLowerCase().includes("none"))
+                        .map((meat) => {
+                          const isOut = soldOutList.includes(meat);
+                          return (
+                            <button
+                              type="button"
+                              key={`extra-${meat}`}
+                              disabled={isOut}
+                              onClick={() => setSelectedExtraMeat(meat)}
+                              className={`px-3 py-1 rounded-full text-xs font-semibold border transition ${
+                                isOut
+                                  ? "bg-stone-100 text-stone-400 border-stone-200 line-through cursor-not-allowed"
+                                  : selectedExtraMeat === meat
+                                  ? "bg-red-800 text-white border-red-800 shadow-xs cursor-pointer"
+                                  : "bg-white text-red-900 border-red-200 hover:bg-red-100 cursor-pointer"
+                              }`}
+                            >
+                              + {meat} {isOut ? "(Sold Out)" : ""}
+                            </button>
+                          );
+                        })}
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* SIDES (GREEN) */}
               <div>
                 <label className="block text-xs font-bold uppercase text-emerald-700 mb-1">
                   Sides (Pick up to{" "}
-                  {getMaxSidesForSelection(activeTierObj, selectedMeat)})
+                  {getMaxSidesForSelection(
+                    activeTierObj,
+                    selectedMeat,
+                    hasExtraSide
+                  )}
+                  {hasExtraSide ? " • Includes +1 Extra Side" : ""})
                 </label>
                 <div className="flex flex-wrap gap-1.5">
                   {menu.sides.map((side) => {
@@ -1265,6 +1402,7 @@ ${pricingLines}
                 <div className="text-right">
                   <span className="text-xs font-medium text-amber-800 block">
                     {qty} × ${unitPrice}
+                    {addOnCost > 0 ? ` (incl. +$${addOnCost} add-ons)` : ""}
                   </span>
                   <span className="text-2xl font-extrabold text-amber-950">
                     ${calculatedTotal.toFixed(2)}
@@ -1487,6 +1625,11 @@ ${pricingLines}
                                     {order.meat}
                                   </span>
                                 )}
+                                {order.extraMeat && (
+                                  <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-red-200 text-red-950 border border-red-300">
+                                    + Extra: {order.extraMeat} (+$1)
+                                  </span>
+                                )}
                                 {(order.sides || []).map((side) => (
                                   <span
                                     key={side}
@@ -1495,6 +1638,11 @@ ${pricingLines}
                                     {side}
                                   </span>
                                 ))}
+                                {order.extraSide && (
+                                  <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-200 text-emerald-950 border border-emerald-300">
+                                    +1 Extra Side (+$1)
+                                  </span>
+                                )}
                                 {order.bread && (
                                   <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-orange-100 text-orange-900">
                                     {order.bread}
