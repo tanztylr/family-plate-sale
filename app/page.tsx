@@ -292,14 +292,9 @@ export default function TeamPlateSaleHome() {
         {/* COLOR-CODED MENU REFERENCE */}
         <section className="bg-white p-6 rounded-2xl border border-stone-200 shadow-sm space-y-5">
           <div className="flex items-center justify-between border-b border-stone-100 pb-3">
-            <div>
-              <h2 className="text-lg font-extrabold text-stone-900">
-                Current Menu Offerings
-              </h2>
-              <p className="text-xs text-stone-500">
-                Color-coded to match order entry pills
-              </p>
-            </div>
+            <h2 className="text-lg font-extrabold text-stone-900">
+              Current Menu Offerings
+            </h2>
             <Link
               href="/admin"
               className="text-xs font-bold text-rose-900 hover:underline"
