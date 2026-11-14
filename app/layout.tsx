@@ -13,7 +13,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Taylor/Stewart Annual Plate Sale",
+  title: "LOV Annual Plate Sale",
   description: "LOV'S Thanksgiving Dinner Plate Sale!",
 };
 
